@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyMatchResult, createMatchPlan, resolveMatchPlan } from '../src/engines/matchEngine.js';
+import { initStandings, applyFixtureResult } from '../src/engines/standingsEngine.js';
 
 function makeFixture(overrides = {}) {
   return {
@@ -109,6 +110,43 @@ test('applyMatchResult records a played fixture and updates season and career to
     averageRatingX100: 780, ratingTotalX100: 780,
   });
   assert.throws(() => applyMatchResult(next, result), /already played/i);
+});
+
+test('applyMatchResult atomically updates the fixture season standings using the standings engine', () => {
+  const state = {
+    fixturesById: {
+      'fixture-2039-0001': {
+        ...makeFixture(),
+        seasonId: 'season-2039',
+        status: 'scheduled',
+        score: null,
+        result: null,
+        playerPerformances: [],
+      },
+    },
+    peopleById: {},
+    seasonsById: {
+      'season-2039': {
+        id: 'season-2039',
+        standings: initStandings(['team-home', 'team-away']),
+      },
+    },
+  };
+  const result = {
+    fixtureId: 'fixture-2039-0001',
+    score: { home: 2, away: 1 },
+    result: 'home',
+    playerPerformances: [],
+  };
+  const original = structuredClone(state);
+
+  const next = applyMatchResult(state, result);
+
+  assert.deepEqual(state, original);
+  const expectedStandings = applyFixtureResult(state.seasonsById['season-2039'].standings, {
+    id: result.fixtureId, homeTeamId: 'team-home', awayTeamId: 'team-away', score: result.score,
+  });
+  assert.deepEqual(next.seasonsById['season-2039'].standings, expectedStandings);
 });
 
 test('applyMatchResult initializes stat containers for a migrated person without career counters', () => {

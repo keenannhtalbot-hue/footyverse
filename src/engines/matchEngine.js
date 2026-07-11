@@ -2,6 +2,7 @@
 // DOM-independent, pure — does not mutate input.
 
 import { scopedRng } from './scopedRng.js';
+import { applyFixtureResult } from './standingsEngine.js';
 
 const INCIDENT_COUNT = 10;
 const INCIDENT_TYPE = 'chance';
@@ -145,6 +146,16 @@ export function applyMatchResult(state, matchResult) {
     result: matchResult.result,
     playerPerformances: structuredClone(matchResult.playerPerformances),
   };
+
+  const season = next.seasonsById?.[fixture.seasonId];
+  if (season?.standings) {
+    season.standings = applyFixtureResult(season.standings, {
+      id: matchResult.fixtureId,
+      homeTeamId: fixture.homeTeamId,
+      awayTeamId: fixture.awayTeamId,
+      score: matchResult.score,
+    });
+  }
 
   for (const performance of matchResult.playerPerformances) {
     const person = next.peopleById?.[performance.personId];
