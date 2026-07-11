@@ -1,0 +1,103 @@
+// Non-football activities. Each has an AP cost, minimum age, and narrative
+// effects expressed as small deltas against hidden stats / stats / relationships.
+
+export const ACTIVITIES = [
+  {
+    id: 'basketball',
+    label: 'Basketball',
+    icon: '🏀',
+    apCost: 2,
+    minAge: 5,
+    physicallyDemanding: true,
+    description: 'Pickup games at the local court. Builds athleticism and confidence.',
+    effects: { stats: { pace: 1, physical: 1 }, hidden: { confidence: 2 } },
+  },
+  {
+    id: 'chess',
+    label: 'Chess Club',
+    icon: '♟️',
+    apCost: 1,
+    minAge: 5,
+    description: 'Slow afternoons over the board sharpen patience and reading the game.',
+    effects: { hidden: { workEthic: 2 }, stats: { passing: 1 } },
+  },
+  {
+    id: 'gaming',
+    label: 'Video Games',
+    icon: '🎮',
+    apCost: 1,
+    minAge: 5,
+    description: 'Downtime with friends. Good for morale, does little else.',
+    effects: { hidden: { confidence: 1, fatigue: -5 } },
+  },
+  {
+    id: 'reading',
+    label: 'Reading',
+    icon: '📚',
+    apCost: 1,
+    minAge: 5,
+    description: 'Books build vocabulary and calm focus.',
+    effects: { hidden: { workEthic: 1 }, school: 1 },
+  },
+  {
+    id: 'swimming',
+    label: 'Swimming',
+    icon: '🏊',
+    apCost: 2,
+    minAge: 5,
+    physicallyDemanding: true,
+    description: 'Laps at the pool build lung capacity and physical resilience.',
+    effects: { stats: { physical: 2 }, hidden: { fatigue: 5 } },
+  },
+  {
+    id: 'gymnastics',
+    label: 'Gymnastics',
+    icon: '🤸',
+    apCost: 2,
+    minAge: 5,
+    physicallyDemanding: true,
+    description: 'Balance, flexibility and body control that carries onto the pitch.',
+    effects: { stats: { dribbling: 1, physical: 1 }, hidden: { fatigue: 5 } },
+  },
+  {
+    id: 'lacrosse',
+    label: 'Lacrosse',
+    icon: '🥍',
+    apCost: 2,
+    minAge: 6,
+    physicallyDemanding: true,
+    description: 'A fast, physical sport that sharpens spatial awareness.',
+    effects: { stats: { pace: 1, defending: 1 }, hidden: { fatigue: 6 } },
+  },
+  {
+    id: 'drama',
+    label: 'Drama Club',
+    icon: '🎭',
+    apCost: 1,
+    minAge: 5,
+    description: 'Performing in front of others builds composure under pressure.',
+    effects: { hidden: { confidence: 2 } },
+  },
+  {
+    id: 'music',
+    label: 'Music Lessons',
+    icon: '🎵',
+    apCost: 1,
+    minAge: 5,
+    description: 'Rhythm and discipline, useful well beyond the instrument.',
+    effects: { hidden: { workEthic: 1, confidence: 1 } },
+  },
+  {
+    id: 'cooking',
+    label: 'Cooking Class',
+    icon: '🍳',
+    apCost: 1,
+    minAge: 5,
+    description: 'Learning to cook builds independence and healthy habits.',
+    effects: { hidden: { fatigue: -3 } },
+  },
+];
+
+export function getActivity(id) {
+  return ACTIVITIES.find((a) => a.id === id);
+}

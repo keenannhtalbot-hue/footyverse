@@ -1,0 +1,10 @@
+{
+  "name": "footyverse",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "description": "FootyVerse v0.5 - a single-player football life simulator. Static ES modules, no build step, no dependencies.",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  }
+}
