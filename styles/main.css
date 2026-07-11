@@ -501,6 +501,40 @@ p {
   text-align: center;
 }
 
+/* ---------- Home game plan ---------- */
+
+.home-objectives {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+}
+
+.home-objective {
+  min-width: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--navy-700);
+}
+
+.home-objective h3 {
+  font-size: 0.78rem;
+  color: var(--lime);
+}
+
+.home-objective p,
+.home-next-action p {
+  overflow-wrap: anywhere;
+}
+
+.home-next-action {
+  max-width: 32rem;
+}
+
+.home-next-action .btn {
+  margin-bottom: var(--space-2);
+}
+
 /* ---------- Contract inbox ---------- */
 
 .contract-inbox > h1 {
