@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { acceptContractOffer, expireContracts } from '../src/engines/contractEngine.js';
+import { acceptContractOffer, expireContracts, rejectContractOffer } from '../src/engines/contractEngine.js';
 
 function makeState(overrides = {}) {
   return {
@@ -72,6 +72,23 @@ test('acceptContractOffer creates one active owning contract and marks the negot
   assert.throws(
     () => acceptContractOffer(stateWithSecondOffer, 'negotiation-2'),
     /active owning contract/,
+  );
+});
+
+test('rejectContractOffer marks an open negotiation rejected without creating a contract, and rejects negotiations that are not open', () => {
+  const state = makeState();
+  const negotiationBefore = state.negotiationsById['negotiation-1'];
+
+  const next = rejectContractOffer(state, 'negotiation-1');
+
+  assert.notEqual(next, state);
+  assert.deepEqual(state.negotiationsById['negotiation-1'], negotiationBefore);
+  assert.equal(next.negotiationsById['negotiation-1'].status, 'rejected');
+  assert.equal(Object.keys(next.contractsById).length, 0);
+
+  assert.throws(
+    () => rejectContractOffer(next, 'negotiation-1'),
+    /Negotiation is not open/,
   );
 });
 

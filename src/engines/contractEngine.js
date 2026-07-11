@@ -47,6 +47,20 @@ export function acceptContractOffer(state, negotiationId) {
   return next;
 }
 
+export function rejectContractOffer(state, negotiationId) {
+  const negotiation = state.negotiationsById?.[negotiationId];
+  if (!negotiation) throw new Error(`Unknown negotiation: ${negotiationId}`);
+  if (negotiation.status !== 'open') throw new Error(`Negotiation is not open: ${negotiationId}`);
+
+  const next = structuredClone(state);
+  next.negotiationsById[negotiationId] = {
+    ...next.negotiationsById[negotiationId],
+    status: 'rejected',
+  };
+
+  return next;
+}
+
 export function expireContracts(state) {
   const tick = state.clock.tick;
   const next = structuredClone(state);
