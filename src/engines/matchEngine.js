@@ -105,3 +105,66 @@ export function resolveMatchPlan(gameSeed, matchPlan, homeLineup, awayLineup, de
     playerPerformances,
   });
 }
+
+const COUNTED_PERFORMANCE_FIELDS = [
+  'minutes', 'goals', 'assists', 'cleanSheets', 'yellowCards', 'redCards',
+];
+
+function addPerformanceTotals(totals, performance) {
+  const next = { ...totals };
+  next.appearances = (totals.appearances ?? 0) + 1;
+  next.starts = (totals.starts ?? 0) + (performance.started ? 1 : 0);
+  for (const field of COUNTED_PERFORMANCE_FIELDS) {
+    next[field] = (totals[field] ?? 0) + (performance[field] ?? 0);
+  }
+  return next;
+}
+
+export function applyMatchResult(state, matchResult) {
+  const fixture = state.fixturesById?.[matchResult.fixtureId];
+  if (!fixture) throw new Error(`Unknown fixture: ${matchResult.fixtureId}`);
+  if (fixture.status === 'played') throw new Error(`Fixture already played: ${matchResult.fixtureId}`);
+
+  for (const performance of matchResult.playerPerformances) {
+    const person = state.peopleById?.[performance.personId];
+    const careerTotals = person?.careerTotals;
+    if ((careerTotals?.appearances ?? 0) > 0 && careerTotals.ratingTotalX100 === undefined) {
+      throw new Error(`Missing exact career rating total for person: ${performance.personId}`);
+    }
+    const seasonTotals = person?.seasonStatsBySeasonId?.[fixture.seasonId];
+    if ((seasonTotals?.appearances ?? 0) > 0 && seasonTotals.ratingTotalX100 === undefined) {
+      throw new Error(`Missing exact season rating total for person: ${performance.personId}`);
+    }
+  }
+
+  const next = structuredClone(state);
+  next.fixturesById[matchResult.fixtureId] = {
+    ...next.fixturesById[matchResult.fixtureId],
+    status: 'played',
+    score: { ...matchResult.score },
+    result: matchResult.result,
+    playerPerformances: structuredClone(matchResult.playerPerformances),
+  };
+
+  for (const performance of matchResult.playerPerformances) {
+    const person = next.peopleById?.[performance.personId];
+    if (!person) throw new Error(`Unknown person: ${performance.personId}`);
+
+    const seasonId = fixture.seasonId;
+    person.seasonStatsBySeasonId ??= {};
+    const previousSeason = person.seasonStatsBySeasonId[seasonId] ?? {};
+    person.seasonStatsBySeasonId[seasonId] = {
+      ...addPerformanceTotals(previousSeason, performance),
+      ratingTotalX100: (previousSeason.ratingTotalX100 ?? 0) + performance.ratingX100,
+    };
+
+    const previousCareer = person.careerTotals ?? {};
+    const career = addPerformanceTotals(previousCareer, performance);
+    const ratingTotal = (previousCareer.ratingTotalX100 ?? 0) + performance.ratingX100;
+    career.ratingTotalX100 = ratingTotal;
+    career.averageRatingX100 = Math.round(ratingTotal / career.appearances);
+    person.careerTotals = career;
+  }
+
+  return next;
+}
