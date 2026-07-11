@@ -4,7 +4,7 @@
 // math itself beyond sequencing calls into the engines.
 
 import { createRng } from './engines/rng.js';
-import { createPlayer, advanceQuarter, spendAP, recordMatchObservation } from './engines/playerEngine.js';
+import { createPlayer, advanceQuarter, spendAP } from './engines/playerEngine.js';
 import { createWorld, advanceWorldQuarter, getRecentNews } from './engines/worldEngine.js';
 import {
   createEventHistory,
@@ -13,13 +13,14 @@ import {
   resolveEventText,
 } from './engines/eventEngine.js';
 import { createRelationship, adjustRelationship, addMemory } from './engines/relationshipEngine.js';
-import { recoverQuarter, isInjured, trainStat, treatInjury, canPerformActivity } from './engines/trainingEngine.js';
+import { recoverQuarter, trainStat, treatInjury, canPerformActivity } from './engines/trainingEngine.js';
 import {
   checkPathwayOffer,
   joinClub,
   recommendPosition,
   respondToRecommendation,
   resolveMatchChoice,
+  processMatchObservation,
 } from './engines/footballEngine.js';
 import { saveGame, loadGame, deleteSave, exportSave, importSave } from './engines/saveEngine.js';
 import { serializeState, deserializeState } from './engines/stateSerializer.js';
@@ -238,8 +239,9 @@ async function offerClubTrial() {
 }
 
 async function runMatchMoment() {
-  if (!state.player.club || isInjured(state.player)) return;
-  if (!state.rng.chance(0.55)) return;
+  const schedule = processMatchObservation(state.player, state.rng);
+  if (!schedule.observed) return;
+  if (!schedule.interactive) return;
 
   const scenarios = [
     { id: 'shoot', label: 'A one-on-one chance with the keeper opens up. Shoot?' },
@@ -260,7 +262,6 @@ async function runMatchMoment() {
 
   const mode = choice === 'go' ? 'go' : 'safe';
   const result = resolveMatchChoice(state.player, scenario.id, state.rng, mode);
-  recordMatchObservation(state.player);
 
   const text = result.success
     ? mode === 'go'

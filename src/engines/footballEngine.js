@@ -5,10 +5,13 @@
 import { COUNTRIES } from '../data/countries.js';
 import { POSITIONS, POSITION_LIST } from '../data/positions.js';
 import { adjustRelationship, addMemory } from './relationshipEngine.js';
-import { applyStatChange } from './playerEngine.js';
+import { applyStatChange, recordMatchObservation } from './playerEngine.js';
+import { isInjured } from './trainingEngine.js';
 
 const OFFER_CHANCE_PER_QUARTER = 0.35;
 const RECOMMENDATION_THRESHOLD = 6;
+const MATCH_OBSERVATION_CHANCE = 0.85;
+const INTERACTIVE_MATCH_CHANCE = 0.35;
 
 export const MATCH_CHOICES = ['shoot', 'pass', 'dribble', 'defend'];
 
@@ -34,6 +37,22 @@ export function joinClub(player, offer) {
   player.pathway = offer.pathway;
   player.careerHistory.push({ type: 'joined_club', club: offer.club, age: player.age, year: player.year });
   return player;
+}
+
+export function scheduleMatchObservation(player, rng) {
+  if (!player.club || isInjured(player)) return { observed: false, interactive: false };
+
+  const roll = rng.next();
+  return {
+    observed: roll < MATCH_OBSERVATION_CHANCE,
+    interactive: roll < INTERACTIVE_MATCH_CHANCE,
+  };
+}
+
+export function processMatchObservation(player, rng) {
+  const schedule = scheduleMatchObservation(player, rng);
+  if (schedule.observed) recordMatchObservation(player);
+  return schedule;
 }
 
 export function recommendPosition(player) {

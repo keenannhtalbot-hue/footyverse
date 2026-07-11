@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createPlayer, recordMatchObservation } from '../src/engines/playerEngine.js';
+import { createRng } from '../src/engines/rng.js';
 import { createRelationship } from '../src/engines/relationshipEngine.js';
 import {
   checkPathwayOffer,
@@ -9,6 +10,8 @@ import {
   respondToRecommendation,
   resolveMatchChoice,
   MATCH_CHOICES,
+  processMatchObservation,
+  scheduleMatchObservation,
 } from '../src/engines/footballEngine.js';
 
 function rngWith({ chanceResult = false, pickIndex = 0 } = {}) {
@@ -47,6 +50,67 @@ test('joinClub sets the player club and pathway', () => {
   joinClub(p, { club: 'Maple Ridge FC', pathway: 'Canadian Grassroots-to-Academy Pathway' });
   assert.equal(p.club, 'Maple Ridge FC');
   assert.equal(p.pathway, 'Canadian Grassroots-to-Academy Pathway');
+});
+
+test('scheduleMatchObservation blocks observations before club enrollment and while sidelined', () => {
+  const p = createPlayer({ name: 'Mina', gender: 'girl', country: 'England', startYear: 2026 });
+  const rng = rngWith({ chanceResult: true });
+  assert.deepEqual(scheduleMatchObservation(p, rng), { observed: false, interactive: false });
+
+  p.club = 'Riverside Juniors';
+  p.injury = { type: 'sprain', quartersOut: 1 };
+  assert.deepEqual(scheduleMatchObservation(p, rng), { observed: false, interactive: false });
+});
+
+test('processMatchObservation records an interactive match exactly once', () => {
+  const p = createPlayer({ name: 'Nico', gender: 'boy', country: 'Spain', startYear: 2026 });
+  p.club = 'Barrio Academy';
+  let draws = 0;
+  const rng = {
+    next: () => {
+      draws += 1;
+      return 0.2;
+    },
+    chance: () => {
+      throw new Error('match scheduling must consume one raw RNG draw');
+    },
+  };
+
+  const result = processMatchObservation(p, rng);
+
+  assert.deepEqual(result, { observed: true, interactive: true });
+  assert.equal(p.matchObservations, 1);
+  assert.equal(draws, 1);
+});
+
+test('seeded club pathways produce balanced age-6-to-14 observations and interactive pacing', () => {
+  const careerCount = 64;
+  let observations = 0;
+  let interactiveMoments = 0;
+
+  for (let career = 0; career < careerCount; career += 1) {
+    const p = createPlayer({ name: 'Ola', gender: 'girl', country: 'England', startYear: 2026 });
+    p.club = 'Riverside Juniors';
+    const rng = createRng(`match-frequency-balance-${career}`);
+    let careerObservations = 0;
+
+    for (let quarter = 0; quarter < 32; quarter += 1) {
+      const result = processMatchObservation(p, rng);
+      careerObservations += Number(result.observed);
+      interactiveMoments += Number(result.interactive);
+    }
+
+    assert.equal(p.matchObservations, careerObservations);
+    observations += careerObservations;
+  }
+
+  const averageObservations = observations / careerCount;
+  const interactiveRatePerQuarter = interactiveMoments / (careerCount * 32);
+  assert.ok(averageObservations >= 25 && averageObservations <= 29, `averaged ${averageObservations}`);
+  assert.ok(
+    interactiveRatePerQuarter >= 0.2 && interactiveRatePerQuarter <= 0.4,
+    `interactive rate ${interactiveRatePerQuarter}`
+  );
 });
 
 test('recommendPosition returns null before enough match observations', () => {

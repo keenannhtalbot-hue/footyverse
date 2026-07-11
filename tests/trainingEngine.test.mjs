@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createPlayer } from '../src/engines/playerEngine.js';
+import { createRng } from '../src/engines/rng.js';
 import {
   trainStat,
   isInjured,
@@ -10,6 +11,7 @@ import {
   canPerformActivity,
   INJURY_INFO,
   TRAINING_STATS,
+  selectInjuryType,
 } from '../src/engines/trainingEngine.js';
 
 function noInjuryRng() {
@@ -75,6 +77,30 @@ test('eligibleInjuryTypes gates severe injuries by age', () => {
   assert.ok(eligibleInjuryTypes(8).includes('broken_ankle'));
   assert.ok(!eligibleInjuryTypes(8).includes('acl'));
   assert.ok(eligibleInjuryTypes(10).includes('acl'));
+});
+
+test('selectInjuryType uses deterministic weighted selection and preserves age gates', () => {
+  const youngRng = createRng('young-injury');
+  for (let i = 0; i < 1000; i += 1) {
+    assert.ok(['bruise', 'sprain'].includes(selectInjuryType(6, youngRng)));
+  }
+
+  const a = createRng('weighted-injury');
+  const b = createRng('weighted-injury');
+  const sequenceA = Array.from({ length: 100 }, () => selectInjuryType(10, a));
+  const sequenceB = Array.from({ length: 100 }, () => selectInjuryType(10, b));
+  assert.deepEqual(sequenceA, sequenceB);
+});
+
+test('ACL tears are rare among age-eligible injuries in a large deterministic sample', () => {
+  const rng = createRng('acl-rarity-sample');
+  const sampleSize = 100000;
+  let aclCount = 0;
+  for (let i = 0; i < sampleSize; i += 1) {
+    if (selectInjuryType(10, rng) === 'acl') aclCount += 1;
+  }
+  const incidence = aclCount / sampleSize;
+  assert.ok(incidence >= 0.005 && incidence <= 0.02, `ACL incidence ${incidence}`);
 });
 
 test('every injury type has realistic descriptive text and severity', () => {

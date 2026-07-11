@@ -8,6 +8,13 @@ const TRAIN_AP_COST = 2;
 const FATIGUE_PER_SESSION = 8;
 const BASE_INJURY_CHANCE = 0.03;
 
+const INJURY_WEIGHTS = {
+  bruise: 65,
+  sprain: 28,
+  broken_ankle: 6,
+  acl: 1,
+};
+
 export const INJURY_INFO = {
   bruise: {
     label: 'Bruise',
@@ -45,6 +52,14 @@ export function eligibleInjuryTypes(age) {
     .map(([key]) => key);
 }
 
+export function selectInjuryType(age, rng) {
+  const entries = eligibleInjuryTypes(age).map((item) => ({ item, weight: INJURY_WEIGHTS[item] }));
+  if (typeof rng.weightedPick === 'function') return rng.weightedPick(entries);
+
+  const weightedPool = entries.flatMap(({ item, weight }) => Array(weight).fill(item));
+  return rng.pick(weightedPool);
+}
+
 export function trainStat(player, statId, rng, apCost = TRAIN_AP_COST) {
   if (isInjured(player)) {
     return { success: false, reason: 'injured' };
@@ -60,8 +75,7 @@ export function trainStat(player, statId, rng, apCost = TRAIN_AP_COST) {
   player.hidden.fatigue = Math.min(100, player.hidden.fatigue + FATIGUE_PER_SESSION);
 
   if (rng.chance(injuryChance)) {
-    const pool = eligibleInjuryTypes(player.age);
-    const type = rng.pick(pool);
+    const type = selectInjuryType(player.age, rng);
     const info = INJURY_INFO[type];
     player.injury = { type, quartersOut: info.quartersOut, ...info };
     return { success: true, injury: player.injury, gain: 0 };
