@@ -768,6 +768,32 @@ dialog::backdrop {
   margin-bottom: var(--space-3);
 }
 
+.quarter-recap {
+  min-width: 0;
+}
+
+.quarter-recap__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.quarter-recap__list {
+  margin: var(--space-3) 0;
+  padding-left: 1.4rem;
+  overflow-wrap: anywhere;
+}
+
+.quarter-recap__list li + li {
+  margin-top: var(--space-2);
+}
+
+.quarter-recap-show {
+  justify-self: start;
+}
+
 /* ---------- Utility ---------- */
 
 .flex-between {

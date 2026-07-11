@@ -24,6 +24,7 @@ import {
 } from './engines/footballEngine.js';
 import { saveGame, loadGame, deleteSave, exportSave, importSave } from './engines/saveEngine.js';
 import { serializeState, deserializeState } from './engines/stateSerializer.js';
+import { buildQuarterRecap, captureQuarterSnapshot } from './engines/quarterRecap.js';
 import {
   acceptContractInAppState,
   counterContractInAppState,
@@ -146,6 +147,8 @@ function newGameState({ name, gender, country, startYear }) {
     activeApp: 'home',
     recommendationOffered: false,
     headline: `${player.name}'s football journey begins in ${country}, ${startYear}.`,
+    quarterEvidence: [],
+    quarterRecap: null,
   };
   appState.careerState = ensureCareerState(appState);
   return appState;
@@ -158,6 +161,8 @@ function hydrateRuntimeFields(loaded) {
   loaded.activeApp = 'home';
   loaded.recommendationOffered = Boolean(loaded.player?.position || loaded.player?.positionAccepted === false);
   loaded.headline = loaded.headline || `Welcome back, ${loaded.player.name}.`;
+  loaded.quarterEvidence = loaded.quarterEvidence ?? [];
+  loaded.quarterRecap = loaded.quarterRecap ?? null;
   loaded.careerState = ensureCareerState(loaded);
   return loaded;
 }
@@ -274,6 +279,11 @@ async function runMatchMoment() {
     : `${state.player.name} played it safe in the ${scenario.id} moment but still came up short.`;
   showToast(text);
   state.headline = text;
+  addQuarterEvidence({
+    kind: 'match',
+    label: `${mode === 'go' ? 'Going for it' : 'Playing safe'} in a ${scenario.id} moment`,
+    outcome: result.success ? 'the move worked' : 'the move did not come off',
+  });
 }
 
 async function offerPositionRecommendation() {
@@ -325,19 +335,30 @@ async function rollEvent() {
 
   showToast(result.text);
   state.headline = result.text;
+  addQuarterEvidence({ kind: 'event', label: 'Your event choice', outcome: result.text });
 }
 
 async function endQuarter() {
   const proceed = await confirmApSpend();
   if (!proceed) return;
 
+  const before = captureQuarterSnapshot(state.player);
   advanceQuarter(state.player);
   if (state.carryBonus) {
     state.player.ap += state.carryBonus;
     state.carryBonus = 0;
   }
   advanceWorldQuarter(state.world, state.rng);
+  const fatigueBeforeRecovery = state.player.hidden.fatigue;
   recoverQuarter(state.player);
+  const recoveredFatigue = state.player.hidden.fatigue - fatigueBeforeRecovery;
+  if (recoveredFatigue !== 0) {
+    addQuarterEvidence({
+      kind: 'activity',
+      label: 'Quarter break',
+      changes: [{ key: 'fatigue', delta: recoveredFatigue }],
+    });
+  }
   state.quarterCounter += 1;
   state.careerState = syncCareerState(state);
 
@@ -346,8 +367,17 @@ async function endQuarter() {
   await offerPositionRecommendation();
   await rollEvent();
 
+  state.quarterRecap = buildQuarterRecap({
+    quarter: state.quarterCounter,
+    from: before,
+    to: captureQuarterSnapshot(state.player),
+    evidence: state.quarterEvidence,
+  });
+  state.quarterEvidence = [];
+
   autosave();
   renderActiveApp();
+  document.getElementById('quarter-recap-title')?.focus();
 }
 
 // ---------------------------------------------------------------------------
@@ -362,6 +392,7 @@ function buildActions() {
       renderActiveApp();
     },
     async trainStat(statId) {
+      const fatigueBefore = state.player.hidden.fatigue;
       const result = trainStat(state.player, statId, state.rng);
       if (!result.success) {
         showToast(result.reason === 'injured' ? 'Injured — resting until recovered.' : 'Not enough activity points.');
@@ -370,6 +401,15 @@ function buildActions() {
         state.headline = `${state.player.name} ${result.injury.text}`;
       } else {
         showToast(`Training paid off: +${result.gain} ${statId}.`);
+      }
+      if (result.success) {
+        addQuarterEvidence({
+          kind: 'training',
+          label: `${statId[0].toUpperCase()}${statId.slice(1)} training`,
+          stat: statId,
+          gain: result.gain,
+          fatigue: state.player.hidden.fatigue - fatigueBefore,
+        });
       }
       autosave();
       renderActiveApp();
@@ -386,7 +426,9 @@ function buildActions() {
         showToast('Not enough activity points.');
         return;
       }
+      const before = structuredClone(state.player);
       applyActivityEffects(state.player, activity);
+      recordEffectEvidence(activity.label, activity.effects, before, state.player);
       showToast(`${activity.label}: ${activity.description}`);
       autosave();
       renderActiveApp();
@@ -399,7 +441,9 @@ function buildActions() {
         showToast('Not enough activity points.');
         return;
       }
+      const before = structuredClone(state.player);
       applyActivityEffects(state.player, choice);
+      recordEffectEvidence(choice.label, choice.effects, before, state.player);
       showToast(`${choice.label}: ${choice.description}`);
       autosave();
       renderActiveApp();
@@ -457,6 +501,13 @@ function buildActions() {
       renderActiveApp();
     },
     endQuarter,
+    setQuarterRecapDismissed(dismissed) {
+      if (!state.quarterRecap) return;
+      state.quarterRecap.dismissed = dismissed;
+      autosave();
+      renderActiveApp();
+      document.querySelector(dismissed ? '[data-quarter-recap="show"]' : '#quarter-recap-title')?.focus();
+    },
     getRecentNews: (limit) => getRecentNews(state.world, limit),
     async saveGame() {
       autosave();
@@ -514,6 +565,24 @@ function applyActivityEffects(player, activity) {
   if (effects.school) {
     player.schoolStanding = Math.min(100, Math.max(0, (player.schoolStanding ?? 50) + effects.school));
   }
+}
+
+function recordEffectEvidence(label, effects = {}, before, after) {
+  const changes = [];
+  for (const key of Object.keys(effects.stats ?? {})) {
+    changes.push({ key, delta: after.stats[key] - before.stats[key] });
+  }
+  for (const key of Object.keys(effects.hidden ?? {})) {
+    changes.push({ key, delta: after.hidden[key] - before.hidden[key] });
+  }
+  if (effects.school) {
+    changes.push({ key: 'schoolStanding', delta: (after.schoolStanding ?? 50) - (before.schoolStanding ?? 50) });
+  }
+  addQuarterEvidence({ kind: 'activity', label, changes });
+}
+
+function addQuarterEvidence(fact) {
+  state.quarterEvidence.push({ ...fact, id: `${state.quarterCounter}-${state.quarterEvidence.length}` });
 }
 
 // ---------------------------------------------------------------------------

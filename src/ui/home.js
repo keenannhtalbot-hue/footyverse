@@ -96,11 +96,27 @@ export function renderHomeDashboard(state) {
   </section>`;
 }
 
+export function renderQuarterRecap(recap) {
+  if (!recap) return '';
+  if (recap.dismissed) {
+    return `<button type="button" class="btn btn--ghost quarter-recap-show" data-quarter-recap="show">Review last quarter</button>`;
+  }
+  return `<section class="card card--accent full-span quarter-recap" aria-labelledby="quarter-recap-title">
+    <div class="quarter-recap__heading">
+      <h2 id="quarter-recap-title" tabindex="-1">Your quarter recap</h2>
+      <button type="button" class="btn btn--ghost" data-quarter-recap="dismiss">Dismiss</button>
+    </div>
+    <ol class="quarter-recap__list">${recap.highlights.map((text) => `<li>${escapeHtml(text)}</li>`).join('')}</ol>
+    ${recap.sparse ? '<p class="text-small text-dim">Only the changes the game could verify are shown — nothing has been made up.</p>' : ''}
+  </section>`;
+}
+
 export function render(container, { state, actions }) {
   const p = state.player;
   const recentStory = p.storyLedger.slice(-3).reverse();
 
   container.innerHTML = `
+    ${renderQuarterRecap(state.quarterRecap)}
     ${renderHomeDashboard(state)}
     ${card(
       'Current status',
@@ -139,4 +155,9 @@ export function render(container, { state, actions }) {
       if (button.isConnected) button.disabled = false;
     }
   });
+  if (state.quarterRecap) {
+    container.querySelector('[data-quarter-recap]')?.addEventListener('click', (event) => {
+      actions.setQuarterRecapDismissed(event.currentTarget.getAttribute('data-quarter-recap') === 'dismiss');
+    });
+  }
 }

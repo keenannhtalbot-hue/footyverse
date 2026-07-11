@@ -6,6 +6,7 @@ import {
   deriveHomeObjectives,
   render,
   renderHomeDashboard,
+  renderQuarterRecap,
 } from '../src/ui/home.js';
 
 function makeState(player = {}) {
@@ -130,4 +131,21 @@ test('Home game plan uses a wrapping mobile-safe layout with a prominent full-wi
   assert.match(css, /\.home-objectives\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(100%,\s*12rem\),\s*1fr\)\)/s);
   assert.match(css, /\.home-objective\s*\{[^}]*min-width:\s*0/s);
   assert.match(css, /\.home-next-action\s*\{[^}]*max-width:\s*32rem/s);
+});
+
+test('Home renders a semantic dismissible and revisitable quarter recap with an honest sparse note', () => {
+  const recap = {
+    quarter: 3,
+    dismissed: false,
+    sparse: true,
+    highlights: ['Rest → Fatigue -4.', 'Quarter complete → Autumn 2030 began.'],
+  };
+  const open = renderQuarterRecap(recap);
+  assert.match(open, /<section[^>]+aria-labelledby="quarter-recap-title"/);
+  assert.match(open, /<h2 id="quarter-recap-title"[^>]*tabindex="-1"/);
+  assert.match(open, /<ol[^>]*>[\s\S]*<li>Rest → Fatigue -4\.<\/li>/);
+  assert.match(open, /Only the changes the game could verify are shown/);
+  assert.match(open, /data-quarter-recap="dismiss"/);
+
+  assert.match(renderQuarterRecap({ ...recap, dismissed: true }), /data-quarter-recap="show"/);
 });

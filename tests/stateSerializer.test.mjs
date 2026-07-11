@@ -103,3 +103,20 @@ test('save/load round trip preserves rng call continuity instead of restarting t
   const freshRng = createRng('seed-continuity');
   assert.notEqual(resumedRng.next(), freshRng.next());
 });
+
+test('serialize and deserialize persist quarter recap state with migration-safe defaults', () => {
+  const quarterRecap = { quarter: 5, dismissed: true, sparse: false, highlights: ['Training → Passing +2.'] };
+  const quarterEvidence = [{ kind: 'training', label: 'Training', stat: 'passing', gain: 2 }];
+  const restored = deserializeState(JSON.parse(JSON.stringify(serializeState({
+    ...makeGameState(),
+    quarterRecap,
+    quarterEvidence,
+  }))));
+
+  assert.deepEqual(restored.quarterRecap, quarterRecap);
+  assert.deepEqual(restored.quarterEvidence, quarterEvidence);
+
+  const legacy = deserializeState(JSON.parse(JSON.stringify(serializeState(makeGameState()))));
+  assert.equal(legacy.quarterRecap, null);
+  assert.deepEqual(legacy.quarterEvidence, []);
+});
