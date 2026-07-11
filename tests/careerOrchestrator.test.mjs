@@ -18,8 +18,14 @@ function makeState(overrides = {}) {
       },
     },
     clubsById: {
-      'club-redbrook': { id: 'club-redbrook', teamIds: ['team-redbrook-senior'] },
-      'club-rheintal': { id: 'club-rheintal', teamIds: ['team-rheintal-senior'] },
+      'club-redbrook': {
+        id: 'club-redbrook', teamIds: ['team-redbrook-senior'],
+        finances: { wageBudgetMinor: 25000000, transferBudgetMinor: 10000000 },
+      },
+      'club-rheintal': {
+        id: 'club-rheintal', teamIds: ['team-rheintal-senior'],
+        finances: { wageBudgetMinor: 20000000, transferBudgetMinor: 8000000 },
+      },
     },
     teamsById: {
       'team-redbrook-senior': {
@@ -48,12 +54,110 @@ function makeState(overrides = {}) {
         toTeamId: 'team-rheintal-senior', createdTick: 490, expiresTick: 510,
         status: 'open', terms: { durationTicks: 32 },
       },
+      'negotiation-transfer-1': {
+        id: 'negotiation-transfer-1', kind: 'transfer', personId: 'person-player',
+        fromClubId: 'club-redbrook', toClubId: 'club-rheintal',
+        toTeamId: 'team-rheintal-senior', createdTick: 490, expiresTick: 510,
+        status: 'open',
+        terms: {
+          transferFeeMinor: 3000000, durationTicks: 128,
+          wagePerWeekMinor: 150000, signingBonusMinor: 50000, squadRole: 'starter',
+        },
+      },
     },
     ledger: [],
     idCounters: {},
     ...overrides,
   };
 }
+
+test('ACCEPT_TRANSFER delegates the atomic transition and appends one deterministic emitted ledger event', () => {
+  const state = makeState();
+  const priorEvent = {
+    id: 'event-8', tick: 490, type: 'CAREER_STARTED', refs: {}, payload: {},
+  };
+  state.ledger.push(priorEvent);
+  state.idCounters.event = 3;
+  const snapshot = structuredClone(state);
+  const command = { type: 'ACCEPT_TRANSFER', negotiationId: 'negotiation-transfer-1' };
+
+  const first = reduceCareerCommand(state, command);
+  const retry = reduceCareerCommand(state, command);
+
+  assert.deepEqual(state, snapshot);
+  assert.deepEqual(first, retry);
+  assert.equal(first.state.negotiationsById['negotiation-transfer-1'].status, 'accepted');
+  assert.equal(first.state.contractsById['contract-1'].status, 'terminated');
+  assert.equal(first.state.contractsById['contract-2'].clubId, 'club-rheintal');
+  assert.equal(first.state.registrationsById['registration-2'].teamId, 'team-rheintal-senior');
+  assert.equal(first.state.clubsById['club-redbrook'].finances.transferBudgetMinor, 13000000);
+  assert.equal(first.state.clubsById['club-rheintal'].finances.transferBudgetMinor, 5000000);
+  assert.deepEqual(first.events, [{
+    id: 'event-9',
+    tick: 500,
+    type: 'TRANSFER_ACCEPTED',
+    refs: {
+      negotiationId: 'negotiation-transfer-1',
+      personId: 'person-player',
+      fromClubId: 'club-redbrook',
+      toClubId: 'club-rheintal',
+      contractId: 'contract-2',
+      registrationId: 'registration-2',
+    },
+    payload: {
+      transferFeeMinor: 3000000,
+      durationTicks: 128,
+      wagePerWeekMinor: 150000,
+      signingBonusMinor: 50000,
+      squadRole: 'starter',
+    },
+  }]);
+  assert.deepEqual(first.state.ledger, [priorEvent, ...first.events]);
+  assert.equal(first.state.idCounters.event, 9);
+});
+
+test('invalid or stale ACCEPT_TRANSFER commands fail atomically without events', () => {
+  const cases = [
+    ['missing-transfer', /unknown negotiation/i],
+    ['negotiation-transfer-1', /negotiation is not open/i],
+  ];
+
+  for (const [negotiationId, expected] of cases) {
+    const state = makeState();
+    if (negotiationId === 'negotiation-transfer-1') {
+      state.negotiationsById[negotiationId].status = 'accepted';
+    }
+    const snapshot = structuredClone(state);
+
+    assert.throws(
+      () => reduceCareerCommand(state, { type: 'ACCEPT_TRANSFER', negotiationId }),
+      expected,
+    );
+    assert.deepEqual(state, snapshot);
+    assert.deepEqual(state.ledger, []);
+  }
+});
+
+test('ACCEPT_TRANSFER with insufficient budget fails atomically without emitting an event', () => {
+  const state = makeState();
+  const priorEvent = {
+    id: 'event-4', tick: 490, type: 'CAREER_STARTED', refs: {}, payload: {},
+  };
+  state.ledger.push(priorEvent);
+  state.idCounters.event = 4;
+  state.clubsById['club-rheintal'].finances.transferBudgetMinor = 2999999;
+  const snapshot = structuredClone(state);
+
+  assert.throws(
+    () => reduceCareerCommand(state, {
+      type: 'ACCEPT_TRANSFER', negotiationId: 'negotiation-transfer-1',
+    }),
+    /insufficient transfer budget/i,
+  );
+  assert.deepEqual(state, snapshot);
+  assert.deepEqual(state.ledger, [priorEvent]);
+  assert.equal(state.idCounters.event, 4);
+});
 
 test('ACCEPT_LOAN delegates the transition and appends one deterministic emitted ledger event', () => {
   const state = makeState();
@@ -152,6 +256,7 @@ test('malformed and unknown commands fail clearly without mutating state', () =>
   const cases = [
     [null, /command must be an object/i],
     [{}, /command type must be a non-empty string/i],
+    [{ type: 'ACCEPT_TRANSFER' }, /negotiationId must be a non-empty string/i],
     [{ type: 'ACCEPT_LOAN' }, /negotiationId must be a non-empty string/i],
     [{ type: 'DO_MAGIC' }, /unknown career command: DO_MAGIC/i],
   ];

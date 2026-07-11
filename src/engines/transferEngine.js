@@ -36,7 +36,7 @@ function allocateId(next, containerName, counterKey, prefix) {
   return `${prefix}-${number}`;
 }
 
-export function acceptTransferOffer(state, negotiationId) {
+export function acceptTransferOfferWithResult(state, negotiationId) {
   assertContainers(state);
 
   const negotiation = state.negotiationsById[negotiationId];
@@ -122,5 +122,9 @@ export function acceptTransferOffer(state, negotiationId) {
     status: 'accepted',
   };
 
-  return next;
+  return { state: next, contractId, registrationId };
+}
+
+export function acceptTransferOffer(state, negotiationId) {
+  return acceptTransferOfferWithResult(state, negotiationId).state;
 }

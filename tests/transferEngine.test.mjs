@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { acceptTransferOffer } from '../src/engines/transferEngine.js';
+import {
+  acceptTransferOffer,
+  acceptTransferOfferWithResult,
+} from '../src/engines/transferEngine.js';
 
 function makeState(overrides = {}) {
   return {
@@ -93,6 +96,23 @@ test('acceptTransferOffer atomically moves contract ownership and registration t
   assert.equal(totalFundsAfter, totalFundsBefore);
 
   assert.equal(next.negotiationsById['negotiation-t1'].status, 'accepted');
+});
+
+test('acceptTransferOfferWithResult exposes the exact contract and registration created by the transition', () => {
+  const state = makeState();
+  state.contractsById['contract-9'] = {
+    id: 'contract-9', personId: 'person-other', clubId: 'club-rheintal', status: 'active',
+  };
+  state.registrationsById['registration-7'] = {
+    id: 'registration-7', personId: 'person-other', teamId: 'team-rheintal-senior', active: true,
+  };
+
+  const result = acceptTransferOfferWithResult(state, 'negotiation-t1');
+
+  assert.equal(result.contractId, 'contract-10');
+  assert.equal(result.registrationId, 'registration-8');
+  assert.equal(result.state.contractsById[result.contractId].personId, 'person-player');
+  assert.equal(result.state.registrationsById[result.registrationId].personId, 'person-player');
 });
 
 test('acceptTransferOffer rejects an insufficient buying-club transfer budget without mutating any state', () => {

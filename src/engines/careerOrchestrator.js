@@ -1,6 +1,7 @@
 // Career orchestrator: authoritative, DOM-independent command routing and ledger emission.
 
 import { acceptLoanOffer, returnExpiredLoans } from './loanEngine.js';
+import { acceptTransferOfferWithResult } from './transferEngine.js';
 
 function allocateEventId(state) {
   let maxNumber = state.idCounters.event ?? 0;
@@ -60,6 +61,31 @@ export function reduceCareerCommand(state, command) {
       }, { scheduledEndTick: loan.endTick });
     });
     return { state: transitioned, events };
+  }
+
+  if (command.type === 'ACCEPT_TRANSFER') {
+    if (typeof command.negotiationId !== 'string' || command.negotiationId.length === 0) {
+      throw new Error('ACCEPT_TRANSFER negotiationId must be a non-empty string.');
+    }
+
+    const transition = acceptTransferOfferWithResult(state, command.negotiationId);
+    const transitioned = transition.state;
+    const negotiation = transitioned.negotiationsById[command.negotiationId];
+    const event = appendEvent(transitioned, 'TRANSFER_ACCEPTED', {
+      negotiationId: negotiation.id,
+      personId: negotiation.personId,
+      fromClubId: negotiation.fromClubId,
+      toClubId: negotiation.toClubId,
+      contractId: transition.contractId,
+      registrationId: transition.registrationId,
+    }, {
+      transferFeeMinor: negotiation.terms.transferFeeMinor,
+      durationTicks: negotiation.terms.durationTicks,
+      wagePerWeekMinor: negotiation.terms.wagePerWeekMinor,
+      signingBonusMinor: negotiation.terms.signingBonusMinor,
+      squadRole: negotiation.terms.squadRole,
+    });
+    return { state: transitioned, events: [event] };
   }
 
   if (command.type !== 'ACCEPT_LOAN') {
