@@ -1,5 +1,10 @@
 // Career orchestrator: authoritative, DOM-independent command routing and ledger emission.
 
+import {
+  acceptContractOfferWithResult,
+  counterContractOffer,
+  rejectContractOffer,
+} from './contractEngine.js';
 import { acceptLoanOffer, returnExpiredLoans } from './loanEngine.js';
 import { acceptTransferOfferWithResult } from './transferEngine.js';
 
@@ -84,6 +89,68 @@ export function reduceCareerCommand(state, command) {
       wagePerWeekMinor: negotiation.terms.wagePerWeekMinor,
       signingBonusMinor: negotiation.terms.signingBonusMinor,
       squadRole: negotiation.terms.squadRole,
+    });
+    return { state: transitioned, events: [event] };
+  }
+
+  if (command.type === 'ACCEPT_CONTRACT') {
+    if (typeof command.negotiationId !== 'string' || command.negotiationId.length === 0) {
+      throw new Error('ACCEPT_CONTRACT negotiationId must be a non-empty string.');
+    }
+
+    const transition = acceptContractOfferWithResult(state, command.negotiationId);
+    const transitioned = transition.state;
+    const negotiation = transitioned.negotiationsById[command.negotiationId];
+    const event = appendEvent(transitioned, 'CONTRACT_ACCEPTED', {
+      negotiationId: negotiation.id,
+      personId: negotiation.personId,
+      clubId: negotiation.toClubId,
+      contractId: transition.contractId,
+    }, {
+      durationTicks: negotiation.terms.durationTicks,
+      wagePerWeekMinor: negotiation.terms.wagePerWeekMinor,
+      signingBonusMinor: negotiation.terms.signingBonusMinor,
+      squadRole: negotiation.terms.squadRole,
+      releaseFeeMinor: negotiation.terms.releaseFeeMinor ?? null,
+    });
+    return { state: transitioned, events: [event] };
+  }
+
+  if (command.type === 'REJECT_CONTRACT') {
+    if (typeof command.negotiationId !== 'string' || command.negotiationId.length === 0) {
+      throw new Error('REJECT_CONTRACT negotiationId must be a non-empty string.');
+    }
+
+    const transitioned = rejectContractOffer(state, command.negotiationId);
+    const negotiation = transitioned.negotiationsById[command.negotiationId];
+    const event = appendEvent(transitioned, 'CONTRACT_REJECTED', {
+      negotiationId: negotiation.id,
+      personId: negotiation.personId,
+      clubId: negotiation.toClubId,
+    }, { roundsUsed: negotiation.roundsUsed });
+    return { state: transitioned, events: [event] };
+  }
+
+  if (command.type === 'COUNTER_CONTRACT') {
+    if (typeof command.negotiationId !== 'string' || command.negotiationId.length === 0) {
+      throw new Error('COUNTER_CONTRACT negotiationId must be a non-empty string.');
+    }
+    const transitioned = counterContractOffer(state, command.negotiationId, command.terms);
+    const negotiation = transitioned.negotiationsById[command.negotiationId];
+    const event = appendEvent(transitioned, 'CONTRACT_COUNTERED', {
+      negotiationId: negotiation.id,
+      personId: negotiation.personId,
+      clubId: negotiation.toClubId,
+    }, {
+      terms: {
+        durationTicks: negotiation.terms.durationTicks,
+        wagePerWeekMinor: negotiation.terms.wagePerWeekMinor,
+        signingBonusMinor: negotiation.terms.signingBonusMinor,
+        squadRole: negotiation.terms.squadRole,
+        releaseFeeMinor: negotiation.terms.releaseFeeMinor ?? null,
+      },
+      roundsUsed: negotiation.roundsUsed,
+      maxRounds: negotiation.maxRounds,
     });
     return { state: transitioned, events: [event] };
   }

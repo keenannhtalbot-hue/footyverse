@@ -64,12 +64,133 @@ function makeState(overrides = {}) {
           wagePerWeekMinor: 150000, signingBonusMinor: 50000, squadRole: 'starter',
         },
       },
+      'negotiation-contract-1': {
+        id: 'negotiation-contract-1', kind: 'professional-offer', personId: 'person-free-agent',
+        fromClubId: 'club-rheintal', toClubId: 'club-rheintal',
+        createdTick: 490, expiresTick: 510, status: 'open',
+        terms: {
+          durationTicks: 96, wagePerWeekMinor: 120000,
+          signingBonusMinor: 40000, squadRole: 'rotation', releaseFeeMinor: 5000000,
+        },
+        roundsUsed: 0, maxRounds: 2,
+      },
     },
     ledger: [],
     idCounters: {},
     ...overrides,
   };
 }
+
+test('ACCEPT_CONTRACT delegates acceptance and emits one deterministic event with the created contract ID', () => {
+  const state = makeState();
+  const snapshot = structuredClone(state);
+  const command = { type: 'ACCEPT_CONTRACT', negotiationId: 'negotiation-contract-1' };
+
+  const first = reduceCareerCommand(state, command);
+  const retry = reduceCareerCommand(state, command);
+
+  assert.deepEqual(state, snapshot);
+  assert.deepEqual(first, retry);
+  assert.equal(first.state.negotiationsById['negotiation-contract-1'].status, 'accepted');
+  assert.deepEqual(first.events, [{
+    id: 'event-1', tick: 500, type: 'CONTRACT_ACCEPTED',
+    refs: {
+      negotiationId: 'negotiation-contract-1', personId: 'person-free-agent',
+      clubId: 'club-rheintal', contractId: 'contract-1',
+    },
+    payload: {
+      durationTicks: 96, wagePerWeekMinor: 120000,
+      signingBonusMinor: 40000, squadRole: 'rotation', releaseFeeMinor: 5000000,
+    },
+  }]);
+  assert.deepEqual(first.state.ledger, first.events);
+});
+
+test('REJECT_CONTRACT delegates rejection and emits one deterministic event with round metadata', () => {
+  const state = makeState();
+  const snapshot = structuredClone(state);
+
+  const result = reduceCareerCommand(state, {
+    type: 'REJECT_CONTRACT', negotiationId: 'negotiation-contract-1',
+  });
+
+  assert.deepEqual(state, snapshot);
+  assert.equal(result.state.negotiationsById['negotiation-contract-1'].status, 'rejected');
+  assert.deepEqual(result.events, [{
+    id: 'event-1', tick: 500, type: 'CONTRACT_REJECTED',
+    refs: {
+      negotiationId: 'negotiation-contract-1', personId: 'person-free-agent',
+      clubId: 'club-rheintal',
+    },
+    payload: { roundsUsed: 0 },
+  }]);
+});
+
+test('COUNTER_CONTRACT delegates terms and emits one deterministic event with the consumed round', () => {
+  const state = makeState();
+  const snapshot = structuredClone(state);
+  const terms = {
+    durationTicks: 128, wagePerWeekMinor: 140000,
+    signingBonusMinor: 60000, squadRole: 'starter', releaseFeeMinor: null,
+  };
+
+  const result = reduceCareerCommand(state, {
+    type: 'COUNTER_CONTRACT', negotiationId: 'negotiation-contract-1', terms,
+  });
+
+  assert.deepEqual(state, snapshot);
+  assert.deepEqual(result.state.negotiationsById['negotiation-contract-1'].terms, terms);
+  assert.deepEqual(result.events, [{
+    id: 'event-1', tick: 500, type: 'CONTRACT_COUNTERED',
+    refs: {
+      negotiationId: 'negotiation-contract-1', personId: 'person-free-agent',
+      clubId: 'club-rheintal',
+    },
+    payload: { terms, roundsUsed: 1, maxRounds: 2 },
+  }]);
+});
+
+test('COUNTER_CONTRACT rejects malformed terms atomically', () => {
+  const state = makeState();
+  const snapshot = structuredClone(state);
+
+  assert.throws(
+    () => reduceCareerCommand(state, {
+      type: 'COUNTER_CONTRACT', negotiationId: 'negotiation-contract-1', terms: null,
+    }),
+    /contract terms/i,
+  );
+  assert.deepEqual(state, snapshot);
+});
+
+test('contract response engine failures are atomic and emit no ledger event', () => {
+  const terms = makeState().negotiationsById['negotiation-contract-1'].terms;
+  const cases = [
+    [{ type: 'ACCEPT_CONTRACT', negotiationId: 'missing-contract-offer' }, /unknown negotiation/i, null],
+    [{ type: 'ACCEPT_CONTRACT', negotiationId: 'negotiation-contract-1' }, /expired/i,
+      (state) => { state.clock.tick = 511; }],
+    [{ type: 'REJECT_CONTRACT', negotiationId: 'negotiation-contract-1' }, /not open/i,
+      (state) => { state.negotiationsById['negotiation-contract-1'].status = 'rejected'; }],
+    [{ type: 'REJECT_CONTRACT', negotiationId: 'negotiation-contract-1' }, /expired/i,
+      (state) => { state.clock.tick = 511; }],
+    [{ type: 'REJECT_CONTRACT', negotiationId: 'negotiation-loan-1' }, /not a contract offer/i, null],
+    [{ type: 'COUNTER_CONTRACT', negotiationId: 'negotiation-contract-1', terms }, /round limit/i,
+      (state) => { state.negotiationsById['negotiation-contract-1'].roundsUsed = 2; }],
+  ];
+
+  for (const [command, expected, arrange] of cases) {
+    const state = makeState();
+    state.ledger.push({ id: 'event-4', tick: 490, type: 'CAREER_STARTED', refs: {}, payload: {} });
+    state.idCounters.event = 4;
+    arrange?.(state);
+    const snapshot = structuredClone(state);
+
+    assert.throws(() => reduceCareerCommand(state, command), expected);
+    assert.deepEqual(state, snapshot);
+    assert.equal(state.ledger.length, 1);
+    assert.equal(state.idCounters.event, 4);
+  }
+});
 
 test('ACCEPT_TRANSFER delegates the atomic transition and appends one deterministic emitted ledger event', () => {
   const state = makeState();
@@ -258,6 +379,9 @@ test('malformed and unknown commands fail clearly without mutating state', () =>
     [{}, /command type must be a non-empty string/i],
     [{ type: 'ACCEPT_TRANSFER' }, /negotiationId must be a non-empty string/i],
     [{ type: 'ACCEPT_LOAN' }, /negotiationId must be a non-empty string/i],
+    [{ type: 'ACCEPT_CONTRACT' }, /negotiationId must be a non-empty string/i],
+    [{ type: 'REJECT_CONTRACT' }, /negotiationId must be a non-empty string/i],
+    [{ type: 'COUNTER_CONTRACT' }, /negotiationId must be a non-empty string/i],
     [{ type: 'DO_MAGIC' }, /unknown career command: DO_MAGIC/i],
   ];
 

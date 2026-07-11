@@ -14,13 +14,44 @@ function hasActiveOwningContract(state, personId) {
   );
 }
 
-export function acceptContractOffer(state, negotiationId) {
-  const negotiation = state.negotiationsById?.[negotiationId];
-  if (!negotiation) throw new Error(`Unknown negotiation: ${negotiationId}`);
-  if (negotiation.status !== 'open') throw new Error(`Negotiation is not open: ${negotiationId}`);
+function assertContractOffer(negotiation, negotiationId) {
+  if (negotiation.kind !== 'professional-offer') {
+    throw new Error(`Negotiation is not a contract offer: ${negotiationId}`);
+  }
+}
+
+function assertOfferNotExpired(state, negotiation, negotiationId) {
   if (state.clock.tick > negotiation.expiresTick) {
     throw new Error(`Negotiation has expired: ${negotiationId}`);
   }
+}
+
+function assertContractTerms(terms) {
+  const validReleaseFee = terms?.releaseFeeMinor == null
+    || (Number.isInteger(terms.releaseFeeMinor) && terms.releaseFeeMinor >= 0);
+  if (!terms
+    || typeof terms !== 'object'
+    || Array.isArray(terms)
+    || !Number.isInteger(terms.durationTicks)
+    || terms.durationTicks <= 0
+    || !Number.isInteger(terms.wagePerWeekMinor)
+    || terms.wagePerWeekMinor < 0
+    || !Number.isInteger(terms.signingBonusMinor)
+    || terms.signingBonusMinor < 0
+    || typeof terms.squadRole !== 'string'
+    || terms.squadRole.length === 0
+    || !validReleaseFee) {
+    throw new Error('Contract terms are invalid.');
+  }
+}
+
+export function acceptContractOfferWithResult(state, negotiationId) {
+  const negotiation = state.negotiationsById?.[negotiationId];
+  if (!negotiation) throw new Error(`Unknown negotiation: ${negotiationId}`);
+  assertContractOffer(negotiation, negotiationId);
+  if (negotiation.status !== 'open') throw new Error(`Negotiation is not open: ${negotiationId}`);
+  assertOfferNotExpired(state, negotiation, negotiationId);
+  assertContractTerms(negotiation.terms);
   if (hasActiveOwningContract(state, negotiation.personId)) {
     throw new Error(`Person already has an active owning contract: ${negotiation.personId}`);
   }
@@ -51,13 +82,19 @@ export function acceptContractOffer(state, negotiationId) {
     status: 'accepted',
   };
 
-  return next;
+  return { state: next, contractId };
+}
+
+export function acceptContractOffer(state, negotiationId) {
+  return acceptContractOfferWithResult(state, negotiationId).state;
 }
 
 export function rejectContractOffer(state, negotiationId) {
   const negotiation = state.negotiationsById?.[negotiationId];
   if (!negotiation) throw new Error(`Unknown negotiation: ${negotiationId}`);
+  assertContractOffer(negotiation, negotiationId);
   if (negotiation.status !== 'open') throw new Error(`Negotiation is not open: ${negotiationId}`);
+  assertOfferNotExpired(state, negotiation, negotiationId);
 
   const next = structuredClone(state);
   next.negotiationsById[negotiationId] = {
@@ -71,13 +108,13 @@ export function rejectContractOffer(state, negotiationId) {
 export function counterContractOffer(state, negotiationId, terms) {
   const negotiation = state.negotiationsById?.[negotiationId];
   if (!negotiation) throw new Error(`Unknown negotiation: ${negotiationId}`);
+  assertContractOffer(negotiation, negotiationId);
   if (negotiation.status !== 'open') throw new Error(`Negotiation is not open: ${negotiationId}`);
-  if (state.clock.tick > negotiation.expiresTick) {
-    throw new Error(`Negotiation has expired: ${negotiationId}`);
-  }
+  assertOfferNotExpired(state, negotiation, negotiationId);
   if (negotiation.roundsUsed >= negotiation.maxRounds) {
     throw new Error(`Negotiation counter round limit reached: ${negotiationId}`);
   }
+  assertContractTerms(terms);
 
   const next = structuredClone(state);
   next.negotiationsById[negotiationId] = {

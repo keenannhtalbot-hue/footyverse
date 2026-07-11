@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   acceptContractOffer,
+  acceptContractOfferWithResult,
   counterContractOffer,
   expireContracts,
   rejectContractOffer,
@@ -80,6 +81,16 @@ test('acceptContractOffer creates one active owning contract and marks the negot
   );
 });
 
+test('acceptContractOfferWithResult exposes the authoritative created contract ID without changing the legacy API', () => {
+  const state = makeState();
+
+  const result = acceptContractOfferWithResult(state, 'negotiation-1');
+
+  assert.equal(result.contractId, 'contract-1');
+  assert.equal(result.state.contractsById[result.contractId].personId, 'person-player');
+  assert.equal(acceptContractOffer(state, 'negotiation-1').contractsById['contract-1'].id, 'contract-1');
+});
+
 test('rejectContractOffer marks an open negotiation rejected without creating a contract, and rejects negotiations that are not open', () => {
   const state = makeState();
   const negotiationBefore = state.negotiationsById['negotiation-1'];
@@ -95,6 +106,19 @@ test('rejectContractOffer marks an open negotiation rejected without creating a 
     () => rejectContractOffer(next, 'negotiation-1'),
     /Negotiation is not open/,
   );
+});
+
+test('rejectContractOffer rejects an expired offer without mutating the input', () => {
+  const state = makeState({
+    clock: { tick: 511, year: 2028, quarterIndex: 0, week: 1 },
+  });
+  const snapshot = structuredClone(state);
+
+  assert.throws(
+    () => rejectContractOffer(state, 'negotiation-1'),
+    /Negotiation has expired/,
+  );
+  assert.deepEqual(state, snapshot);
 });
 
 test('counterContractOffer replaces the proposed terms and consumes one negotiation round without mutating the input', () => {
@@ -143,6 +167,50 @@ test('counterContractOffer rejects a negotiation that is no longer open', () => 
     () => counterContractOffer(state, 'negotiation-1', state.negotiationsById['negotiation-1'].terms),
     /Negotiation is not open/,
   );
+});
+
+test('contract responses reject non-contract negotiation kinds without mutating input', () => {
+  const state = makeState();
+  state.negotiationsById['negotiation-1'].kind = 'transfer';
+  const snapshot = structuredClone(state);
+
+  assert.throws(() => acceptContractOffer(state, 'negotiation-1'), /not a contract offer/i);
+  assert.throws(() => rejectContractOffer(state, 'negotiation-1'), /not a contract offer/i);
+  assert.throws(
+    () => counterContractOffer(state, 'negotiation-1', state.negotiationsById['negotiation-1'].terms),
+    /not a contract offer/i,
+  );
+  assert.deepEqual(state, snapshot);
+});
+
+test('counterContractOffer rejects terms that cannot create a valid JSON-safe contract', () => {
+  const invalidTerms = [
+    null,
+    { durationTicks: 0, wagePerWeekMinor: 1, signingBonusMinor: 0, squadRole: 'rotation' },
+    { durationTicks: 1, wagePerWeekMinor: -1, signingBonusMinor: 0, squadRole: 'rotation' },
+    { durationTicks: 1, wagePerWeekMinor: 1, signingBonusMinor: -1, squadRole: 'rotation' },
+    { durationTicks: 1, wagePerWeekMinor: 1, signingBonusMinor: 0, squadRole: '' },
+    {
+      durationTicks: 1, wagePerWeekMinor: 1, signingBonusMinor: 0,
+      squadRole: 'rotation', releaseFeeMinor: Number.NaN,
+    },
+  ];
+
+  for (const terms of invalidTerms) {
+    const state = makeState();
+    const snapshot = structuredClone(state);
+    assert.throws(() => counterContractOffer(state, 'negotiation-1', terms), /contract terms/i);
+    assert.deepEqual(state, snapshot);
+  }
+});
+
+test('acceptContractOffer rejects stored malformed terms before creating a contract', () => {
+  const state = makeState();
+  delete state.negotiationsById['negotiation-1'].terms.durationTicks;
+  const snapshot = structuredClone(state);
+
+  assert.throws(() => acceptContractOffer(state, 'negotiation-1'), /contract terms/i);
+  assert.deepEqual(state, snapshot);
 });
 
 test('expireContracts marks active contracts whose endTick has passed as expired, leaving future and non-active contracts unchanged and the input untouched', () => {
