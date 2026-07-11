@@ -146,3 +146,60 @@ export function acceptContractInAppState(appState, negotiationId, persist) {
     };
   }
 }
+
+export function rejectContractInAppState(appState, negotiationId, persist) {
+  try {
+    const { state: careerState } = reduceCareerCommand(appState.careerState, {
+      type: 'REJECT_CONTRACT',
+      negotiationId,
+    });
+    const clubId = careerState.negotiationsById[negotiationId].toClubId;
+    const clubName = careerState.clubsById[clubId]?.name ?? 'the club';
+    const next = {
+      ...appState,
+      careerState,
+      contractFeedback: {
+        type: 'success',
+        message: `Offer rejected — no hard feelings, ${clubName}.`,
+      },
+    };
+    persist(next);
+    return next;
+  } catch (error) {
+    return {
+      ...appState,
+      contractFeedback: {
+        type: 'error',
+        message: `Could not reject offer: ${error.message}`,
+      },
+    };
+  }
+}
+
+export function counterContractInAppState(appState, negotiationId, terms, persist) {
+  try {
+    const { state: careerState } = reduceCareerCommand(appState.careerState, {
+      type: 'COUNTER_CONTRACT', negotiationId, terms,
+    });
+    const negotiation = careerState.negotiationsById[negotiationId];
+    const roundsRemaining = Math.max(0, negotiation.maxRounds - negotiation.roundsUsed);
+    const next = {
+      ...appState,
+      careerState,
+      contractFeedback: {
+        type: 'success',
+        message: `Counter sent — ${roundsRemaining} round${roundsRemaining === 1 ? '' : 's'} remaining.`,
+      },
+    };
+    persist(next);
+    return next;
+  } catch (error) {
+    return {
+      ...appState,
+      contractFeedback: {
+        type: 'error',
+        message: `Could not counter offer: ${error.message}`,
+      },
+    };
+  }
+}

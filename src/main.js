@@ -26,7 +26,9 @@ import { saveGame, loadGame, deleteSave, exportSave, importSave } from './engine
 import { serializeState, deserializeState } from './engines/stateSerializer.js';
 import {
   acceptContractInAppState,
+  counterContractInAppState,
   ensureCareerState,
+  rejectContractInAppState,
   syncCareerState,
 } from './engines/careerStateAdapter.js';
 import { COUNTRIES, COUNTRY_LIST } from './data/countries.js';
@@ -428,6 +430,29 @@ function buildActions() {
       if (state.contractFeedback.type === 'success') {
         state.headline = state.contractFeedback.message;
       }
+      showToast(state.contractFeedback.message);
+      renderActiveApp();
+    },
+    async rejectContract(negotiationId) {
+      const offer = state.careerState.negotiationsById?.[negotiationId];
+      const clubName = state.careerState.clubsById?.[offer?.toClubId]?.name ?? 'this club';
+      const choice = await openDialog({
+        title: 'Reject this offer?',
+        bodyHtml: `<p>Turn down <strong>${escapeHtml(clubName)}</strong>? You cannot accept this offer later.</p>`,
+        actions: [
+          { id: 'reject', label: 'Reject offer', variant: 'danger' },
+          { id: 'cancel', label: 'Keep considering', variant: 'ghost' },
+        ],
+      });
+      if (choice !== 'reject') return;
+      state = rejectContractInAppState(state, negotiationId, persistCandidate);
+      if (state.contractFeedback.type === 'success') state.headline = state.contractFeedback.message;
+      showToast(state.contractFeedback.message);
+      renderActiveApp();
+    },
+    async counterContract(negotiationId, terms) {
+      state = counterContractInAppState(state, negotiationId, terms, persistCandidate);
+      if (state.contractFeedback.type === 'success') state.headline = state.contractFeedback.message;
       showToast(state.contractFeedback.message);
       renderActiveApp();
     },
