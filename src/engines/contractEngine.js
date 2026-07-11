@@ -46,3 +46,16 @@ export function acceptContractOffer(state, negotiationId) {
 
   return next;
 }
+
+export function expireContracts(state) {
+  const tick = state.clock.tick;
+  const next = structuredClone(state);
+
+  for (const contract of Object.values(next.contractsById)) {
+    if (contract.status === 'active' && contract.endTick <= tick) {
+      contract.status = 'expired';
+    }
+  }
+
+  return next;
+}
