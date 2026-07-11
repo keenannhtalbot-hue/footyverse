@@ -42,3 +42,10 @@ export function randomNpcName(rng, country, genderHint) {
   const last = rng.pick(pool.surnames);
   return { first: `${first} ${last}`, gender };
 }
+
+export function formatTeacherName({ first, gender }) {
+  const [, ...surnameParts] = first.trim().split(/\s+/);
+  const surname = surnameParts.join(' ') || first.trim();
+  const title = gender === 'boy' ? 'Mr.' : gender === 'girl' ? 'Ms.' : 'Mx.';
+  return `${title} ${surname}`;
+}

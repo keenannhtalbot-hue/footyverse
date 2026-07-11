@@ -27,7 +27,7 @@ import { COUNTRIES, COUNTRY_LIST } from './data/countries.js';
 import { EVENTS } from './data/events.js';
 import { getActivity } from './data/activities.js';
 import { getLifeChoice } from './data/lifeChoices.js';
-import { randomNpcName } from './data/names.js';
+import { formatTeacherName, randomNpcName } from './data/names.js';
 import { openDialog, escapeHtml } from './ui/dialog.js';
 import { showToast } from './ui/toast.js';
 
@@ -61,6 +61,7 @@ let state = null;
 
 function buildRelationships(player, rng) {
   const relationships = {};
+  const teacherIdentity = randomNpcName(rng, player.country);
 
   relationships.parentA = createRelationship({
     id: 'parentA',
@@ -80,7 +81,7 @@ function buildRelationships(player, rng) {
   });
   relationships.teacher = createRelationship({
     id: 'teacher',
-    name: `Mx. ${randomNpcName(rng, player.country).first.split(' ').slice(-1)[0]}`,
+    name: formatTeacherName(teacherIdentity),
     role: 'teacher',
     personality: rng.pick(['patient', 'no-nonsense', 'encouraging']),
     likes: ['participation'],
