@@ -68,6 +68,27 @@ export function rejectContractOffer(state, negotiationId) {
   return next;
 }
 
+export function counterContractOffer(state, negotiationId, terms) {
+  const negotiation = state.negotiationsById?.[negotiationId];
+  if (!negotiation) throw new Error(`Unknown negotiation: ${negotiationId}`);
+  if (negotiation.status !== 'open') throw new Error(`Negotiation is not open: ${negotiationId}`);
+  if (state.clock.tick > negotiation.expiresTick) {
+    throw new Error(`Negotiation has expired: ${negotiationId}`);
+  }
+  if (negotiation.roundsUsed >= negotiation.maxRounds) {
+    throw new Error(`Negotiation counter round limit reached: ${negotiationId}`);
+  }
+
+  const next = structuredClone(state);
+  next.negotiationsById[negotiationId] = {
+    ...next.negotiationsById[negotiationId],
+    terms: structuredClone(terms),
+    roundsUsed: negotiation.roundsUsed + 1,
+  };
+
+  return next;
+}
+
 export function expireContracts(state) {
   assertContractContainer(state);
   const tick = state.clock.tick;

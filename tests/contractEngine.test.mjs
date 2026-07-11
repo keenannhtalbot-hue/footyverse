@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { acceptContractOffer, expireContracts, rejectContractOffer } from '../src/engines/contractEngine.js';
+import {
+  acceptContractOffer,
+  counterContractOffer,
+  expireContracts,
+  rejectContractOffer,
+} from '../src/engines/contractEngine.js';
 
 function makeState(overrides = {}) {
   return {
@@ -88,6 +93,54 @@ test('rejectContractOffer marks an open negotiation rejected without creating a 
 
   assert.throws(
     () => rejectContractOffer(next, 'negotiation-1'),
+    /Negotiation is not open/,
+  );
+});
+
+test('counterContractOffer replaces the proposed terms and consumes one negotiation round without mutating the input', () => {
+  const state = makeState();
+  const proposedTerms = {
+    durationTicks: 96,
+    wagePerWeekMinor: 210000,
+    signingBonusMinor: 250000,
+    squadRole: 'rotation',
+    transferFeeMinor: 0,
+  };
+
+  const next = counterContractOffer(state, 'negotiation-1', proposedTerms);
+
+  assert.equal(state.negotiationsById['negotiation-1'].roundsUsed, 0);
+  assert.equal(next.negotiationsById['negotiation-1'].roundsUsed, 1);
+  assert.deepEqual(next.negotiationsById['negotiation-1'].terms, proposedTerms);
+});
+
+test('counterContractOffer rejects a counter after the negotiation round limit is reached', () => {
+  const state = makeState();
+  state.negotiationsById['negotiation-1'].roundsUsed = 2;
+
+  assert.throws(
+    () => counterContractOffer(state, 'negotiation-1', state.negotiationsById['negotiation-1'].terms),
+    /counter round limit reached/,
+  );
+});
+
+test('counterContractOffer rejects a counter after the offer expires', () => {
+  const state = makeState({
+    clock: { tick: 511, year: 2028, quarterIndex: 0, week: 1 },
+  });
+
+  assert.throws(
+    () => counterContractOffer(state, 'negotiation-1', state.negotiationsById['negotiation-1'].terms),
+    /Negotiation has expired/,
+  );
+});
+
+test('counterContractOffer rejects a negotiation that is no longer open', () => {
+  const state = makeState();
+  state.negotiationsById['negotiation-1'].status = 'rejected';
+
+  assert.throws(
+    () => counterContractOffer(state, 'negotiation-1', state.negotiationsById['negotiation-1'].terms),
     /Negotiation is not open/,
   );
 });
