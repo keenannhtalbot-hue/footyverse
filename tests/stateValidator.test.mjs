@@ -47,3 +47,31 @@ test('validateState rejects a clock with quarterIndex out of range', () => {
     'expected an error mentioning quarterIndex',
   );
 });
+
+test('validateState rejects missing schema v2 entity containers and id counters', () => {
+  const requiredObjects = [
+    'peopleById', 'clubsById', 'teamsById', 'competitionsById', 'seasonsById',
+    'fixturesById', 'contractsById', 'negotiationsById', 'registrationsById',
+    'nationalTeamsById', 'callUpsById', 'awardsById', 'idCounters',
+  ];
+
+  for (const field of requiredObjects) {
+    const state = makeValidState();
+    delete state[field];
+    const result = validateState(state);
+    assert.equal(result.valid, false, `${field} should be required`);
+    assert.ok(result.errors.some((error) => error.includes(field)));
+  }
+});
+
+test('validateState rejects missing schema v2 array containers', () => {
+  const requiredArrays = ['activeSeasonIds', 'pendingDecisionIds', 'ledger', 'newsLog'];
+
+  for (const field of requiredArrays) {
+    const state = makeValidState();
+    delete state[field];
+    const result = validateState(state);
+    assert.equal(result.valid, false, `${field} should be required`);
+    assert.ok(result.errors.some((error) => error.includes(field)));
+  }
+});

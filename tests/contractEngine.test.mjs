@@ -135,3 +135,17 @@ test('expireContracts marks active contracts whose endTick has passed as expired
   assert.equal(next.contractsById['contract-future'].status, 'active');
   assert.equal(next.contractsById['contract-already-expired'].status, 'expired');
 });
+
+test('contract operations fail clearly instead of throwing a TypeError when contractsById is missing', () => {
+  const state = makeState();
+  delete state.contractsById;
+
+  assert.throws(
+    () => acceptContractOffer(state, 'negotiation-1'),
+    /contractsById must be an object/,
+  );
+  assert.throws(
+    () => expireContracts(state),
+    /contractsById must be an object/,
+  );
+});

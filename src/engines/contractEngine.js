@@ -1,7 +1,14 @@
 // Contract engine: offer acceptance, contract validity.
 // DOM-independent, pure — does not mutate input.
 
+function assertContractContainer(state) {
+  if (!state.contractsById || typeof state.contractsById !== 'object' || Array.isArray(state.contractsById)) {
+    throw new Error('contractsById must be an object.');
+  }
+}
+
 function hasActiveOwningContract(state, personId) {
+  assertContractContainer(state);
   return Object.values(state.contractsById).some(
     (contract) => contract.personId === personId && contract.status === 'active',
   );
@@ -62,6 +69,7 @@ export function rejectContractOffer(state, negotiationId) {
 }
 
 export function expireContracts(state) {
+  assertContractContainer(state);
   const tick = state.clock.tick;
   const next = structuredClone(state);
 
