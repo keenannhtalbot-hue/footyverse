@@ -39,6 +39,17 @@ test('serializeState carries through player, world, relationships, settings, qua
   assert.equal(serialized.seed, 'abc123');
 });
 
+test('serialize and deserialize preserve canonical career state and contract feedback', () => {
+  const careerState = { schemaVersion: 2, clock: { tick: 44 }, negotiationsById: {} };
+  const contractFeedback = { type: 'success', message: 'Contract accepted.' };
+  const state = { ...makeGameState(), careerState, contractFeedback };
+
+  const restored = deserializeState(JSON.parse(JSON.stringify(serializeState(state))));
+
+  assert.deepEqual(restored.careerState, careerState);
+  assert.deepEqual(restored.contractFeedback, contractFeedback);
+});
+
 test('serializeState flattens eventHistory Set/Map into plain arrays', () => {
   const state = makeGameState();
   const serialized = serializeState(state);

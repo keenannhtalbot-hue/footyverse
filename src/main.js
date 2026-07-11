@@ -23,6 +23,11 @@ import {
 } from './engines/footballEngine.js';
 import { saveGame, loadGame, deleteSave, exportSave, importSave } from './engines/saveEngine.js';
 import { serializeState, deserializeState } from './engines/stateSerializer.js';
+import {
+  acceptContractInAppState,
+  ensureCareerState,
+  syncCareerState,
+} from './engines/careerStateAdapter.js';
 import { COUNTRIES, COUNTRY_LIST } from './data/countries.js';
 import { EVENTS } from './data/events.js';
 import { getActivity } from './data/activities.js';
@@ -39,6 +44,7 @@ import * as RelationshipsApp from './ui/relationships.js';
 import * as LifeApp from './ui/life.js';
 import * as ActivitiesApp from './ui/activities.js';
 import * as NewsApp from './ui/news.js';
+import * as ContractsApp from './ui/contracts.js';
 import * as StatisticsApp from './ui/statistics.js';
 import * as SettingsApp from './ui/settings.js';
 
@@ -50,12 +56,13 @@ const APPS = [
   { id: 'relationships', label: 'People', icon: '💬', module: RelationshipsApp },
   { id: 'life', label: 'Life', icon: '🏡', module: LifeApp },
   { id: 'activities', label: 'Activities', icon: '🎯', module: ActivitiesApp },
+  { id: 'contracts', label: 'Offers', icon: '📨', module: ContractsApp },
   { id: 'news', label: 'News', icon: '📰', module: NewsApp },
   { id: 'statistics', label: 'Stats', icon: '📊', module: StatisticsApp },
   { id: 'settings', label: 'Settings', icon: '⚙️', module: SettingsApp },
 ];
 
-const PRIMARY_NAV_IDS = ['home', 'football', 'training', 'relationships', 'news'];
+const PRIMARY_NAV_IDS = ['home', 'football', 'training', 'relationships', 'contracts'];
 
 let state = null;
 
@@ -124,7 +131,7 @@ function newGameState({ name, gender, country, startYear }) {
   const eventHistory = createEventHistory();
   const relationships = buildRelationships(player, rng);
 
-  return {
+  const appState = {
     player,
     world,
     eventHistory,
@@ -137,6 +144,8 @@ function newGameState({ name, gender, country, startYear }) {
     recommendationOffered: false,
     headline: `${player.name}'s football journey begins in ${country}, ${startYear}.`,
   };
+  appState.careerState = ensureCareerState(appState);
+  return appState;
 }
 
 function hydrateRuntimeFields(loaded) {
@@ -146,6 +155,7 @@ function hydrateRuntimeFields(loaded) {
   loaded.activeApp = 'home';
   loaded.recommendationOffered = Boolean(loaded.player?.position || loaded.player?.positionAccepted === false);
   loaded.headline = loaded.headline || `Welcome back, ${loaded.player.name}.`;
+  loaded.careerState = ensureCareerState(loaded);
   return loaded;
 }
 
@@ -160,6 +170,10 @@ function autosave() {
     console.error('Autosave failed', err);
     showToast('Autosave failed — your browser storage may be full or disabled.');
   }
+}
+
+function persistCandidate(candidate) {
+  saveGame(window.localStorage, serializeState(candidate));
 }
 
 function tryLoadExisting() {
@@ -322,6 +336,7 @@ async function endQuarter() {
   advanceWorldQuarter(state.world, state.rng);
   recoverQuarter(state.player);
   state.quarterCounter += 1;
+  state.careerState = syncCareerState(state);
 
   await offerClubTrial();
   await runMatchMoment();
@@ -406,6 +421,14 @@ function buildActions() {
       autosave();
       renderActiveApp();
       renderShellStatus();
+    },
+    async acceptContract(negotiationId) {
+      state = acceptContractInAppState(state, negotiationId, persistCandidate);
+      if (state.contractFeedback.type === 'success') {
+        state.headline = state.contractFeedback.message;
+      }
+      showToast(state.contractFeedback.message);
+      renderActiveApp();
     },
     endQuarter,
     getRecentNews: (limit) => getRecentNews(state.world, limit),
