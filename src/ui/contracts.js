@@ -65,7 +65,9 @@ export function getContractOffers(careerState) {
     .map((offer) => ({
       ...offer,
       clubName: careerState.clubsById?.[offer.toClubId]?.name ?? 'Unknown club',
-      contractStatus: offer.status === 'accepted' ? currentContract?.status ?? null : null,
+      contractStatus: offer.status === 'accepted'
+        ? careerState.contractsById?.[offer.contractId]?.status ?? currentContract?.status ?? null
+        : null,
       expired: offer.status === 'open' && careerState.clock.tick > offer.expiresTick,
     }));
 }

@@ -221,9 +221,16 @@ test('career clock sync expires due professional contracts without reverting the
 
   assert.equal(synced.contractsById['contract-1'].status, 'expired');
   assert.equal(synced.peopleById['person-player'].career.stage, 'senior');
+  assert.equal(synced.peopleById['person-player'].career.currentContractId, null);
+  assert.equal(synced.peopleById['person-player'].career.currentTeamId, null);
+  assert.equal(synced.registrationsById['registration-1'].active, false);
+  assert.deepEqual(synced.teamsById['team-redbrook-senior'].squadPersonIds, []);
   assert.equal(accepted.player.club, 'Redbrook Town FC');
   assert.equal(synced.negotiationsById['negotiation-contract-1'].status, 'accepted');
   assert.match(renderContractInbox(synced), /contract term has ended|post-contract career decision is not implemented/i);
+  const expiredAppState = { ...accepted, careerState: synced };
+  assert.match(renderHomeDashboard(expiredAppState), /contract with Redbrook Town FC has ended/i);
+  assert.doesNotMatch(renderHomeDashboard(expiredAppState), /Keep growing as .* with Redbrook Town FC/i);
 });
 
 test('expired acceptance reports the engine error without mutating or persisting state', () => {

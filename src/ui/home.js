@@ -6,21 +6,32 @@ function isSeniorCareer(state) {
   return state.careerState?.peopleById?.[state.careerState.playerId]?.career?.stage === 'senior';
 }
 
+function hasActiveProfessionalContract(state) {
+  const contractId = state.careerState?.peopleById?.[state.careerState.playerId]?.career?.currentContractId;
+  return Boolean(contractId && state.careerState?.contractsById?.[contractId]?.status === 'active');
+}
+
 export function deriveHomeObjectives(state) {
   const p = state.player;
   const isSenior = isSeniorCareer(state);
+  const hasActiveContract = hasActiveProfessionalContract(state);
+  const endedContract = isSenior && !hasActiveContract && p.club;
   const injured = Boolean(p.injury && p.injury.quartersOut > 0);
   const immediate = injured
     ? `Recover from ${p.injury.label} before returning to full training.`
     : p.ap > 0
       ? `Use your ${p.ap} AP to improve before ${p.quarter} ends.`
       : `${p.quarter} is complete. Move on when you are ready.`;
-  const season = !p.club
+  const season = endedContract
+    ? `Your contract with ${p.club} has ended. Choose your next senior step.`
+    : !p.club
     ? 'Build your skills and look for a club pathway this season.'
     : p.position
       ? `Keep growing as a ${p.position} with ${p.club}.`
       : `Play for ${p.club} so your coach can learn your best position.`;
-  const longTerm = isSenior
+  const longTerm = endedContract
+    ? `Your contract with ${p.club} has ended. Choose your next senior step.`
+    : isSenior
     ? `Build your senior career with ${p.club ?? 'your professional club'}.`
     : p.age < 16
       ? 'Grow your game step by step on the journey to age 16.'

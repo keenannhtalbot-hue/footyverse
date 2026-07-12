@@ -125,6 +125,7 @@ export function acceptContractOfferWithResult(state, negotiationId) {
   next.registrationsById[registrationId] = {
     id: registrationId,
     personId: negotiation.personId,
+    contractId,
     teamId: destinationTeam.id,
     kind: 'permanent',
     startTick: tick,
@@ -142,6 +143,7 @@ export function acceptContractOfferWithResult(state, negotiationId) {
   career.loanTeamId = null;
   next.negotiationsById[negotiationId] = {
     ...next.negotiationsById[negotiationId],
+    contractId,
     status: 'accepted',
   };
 
@@ -197,6 +199,29 @@ export function expireContracts(state) {
   for (const contract of Object.values(next.contractsById)) {
     if (contract.status === 'active' && contract.endTick <= tick) {
       contract.status = 'expired';
+
+      const person = next.peopleById?.[contract.personId];
+      const currentTeamId = person?.career?.currentContractId === contract.id
+        ? person.career.currentTeamId
+        : null;
+      for (const registration of Object.values(next.registrationsById ?? {})) {
+        const belongsToContract = registration.personId === contract.personId
+          && registration.active
+          && (registration.contractId === contract.id
+            || (!registration.contractId && registration.teamId === currentTeamId));
+        if (!belongsToContract) continue;
+        registration.active = false;
+        registration.endTick = tick;
+        const team = next.teamsById?.[registration.teamId];
+        if (Array.isArray(team?.squadPersonIds)) {
+          team.squadPersonIds = team.squadPersonIds
+            .filter((personId) => personId !== contract.personId);
+        }
+      }
+      if (person?.career?.currentContractId === contract.id) {
+        person.career.currentContractId = null;
+        person.career.currentTeamId = null;
+      }
     }
   }
 

@@ -8,14 +8,23 @@ import { POSITIONS } from '../data/positions.js';
 export function render(container, { state }) {
   const p = state.player;
   const coach = state.relationships.coach;
+  const career = state.careerState?.peopleById?.[state.careerState.playerId]?.career;
+  const activeContract = career?.currentContractId
+    ? state.careerState?.contractsById?.[career.currentContractId]
+    : null;
+  const pathwayLabel = career?.stage === 'senior' && !activeContract ? 'Last club' : 'Club';
+  const pathwayStatus = career?.stage === 'senior' && !activeContract
+    ? '<p class="text-dim">Professional contract ended — your senior history is saved while the next step is decided.</p>'
+    : '';
 
   container.innerHTML = `
     ${card(
       'Pathway',
       p.club
         ? `
-        <p><strong>Club:</strong> ${escapeHtml(p.club)}</p>
+        <p><strong>${pathwayLabel}:</strong> ${escapeHtml(p.club)}</p>
         <p><strong>Pathway:</strong> ${escapeHtml(p.pathway)}</p>
+        ${pathwayStatus}
         <p><strong>Coach:</strong> ${escapeHtml(coach.name)} (${escapeHtml(coach.personality)})</p>
       `
         : emptyState(
