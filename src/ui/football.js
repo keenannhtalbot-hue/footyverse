@@ -4,8 +4,19 @@
 
 import { escapeHtml, card, emptyState } from './helpers.js';
 import { POSITIONS } from '../data/positions.js';
+import { renderGuidedHint } from './guidedHint.js';
+import { resolveActiveStepForApp } from '../engines/guidedSeason.js';
 
-export function render(container, { state }) {
+function renderGuidedHintForApp(state, actions, appId) {
+  const step = resolveActiveStepForApp(state, appId);
+  if (!step) return '';
+  return renderGuidedHint({
+    step,
+    onDismiss: () => actions.dismissGuidedHint(step.id),
+  });
+}
+
+export function render(container, { state, actions }) {
   const p = state.player;
   const coach = state.relationships.coach;
   const career = state.careerState?.peopleById?.[state.careerState.playerId]?.career;
@@ -16,8 +27,10 @@ export function render(container, { state }) {
   const pathwayStatus = career?.stage === 'senior' && !activeContract
     ? '<p class="text-dim">Professional contract ended — your senior history is saved while the next step is decided.</p>'
     : '';
+  const guidedHintHtml = renderGuidedHintForApp(state, actions, 'football');
 
   container.innerHTML = `
+    ${guidedHintHtml}
     ${card(
       'Pathway',
       p.club
@@ -46,4 +59,13 @@ export function render(container, { state }) {
        <p class="text-dim text-small">Interactive match moments — shoot, pass, dribble, or defend — appear automatically when you end a quarter while on a club.</p>`
     )}
   `;
+
+  const dismissBtn = container.querySelector?.('[data-guided-dismiss]');
+  if (dismissBtn && typeof dismissBtn.closest === 'function' && typeof dismissBtn.addEventListener === 'function') {
+    dismissBtn.addEventListener('click', (event) => {
+      const dismissEl = event.currentTarget?.closest?.('[data-guided-step]');
+      const stepId = dismissEl?.getAttribute?.('data-guided-step');
+      if (stepId) actions.dismissGuidedHint(stepId);
+    });
+  }
 }

@@ -36,6 +36,13 @@ export function render(container, { state, actions }) {
       `
     )}
     ${card(
+      'Tutorial',
+      `
+      <p class="text-small text-dim">Reset the six first-run hints if you want FootyVerse to teach you the loop from scratch again. Your save and progress are not changed.</p>
+      <button type="button" class="btn" id="reset-tutorial-btn">Reset tutorial hints</button>
+      `
+    )}
+    ${card(
       'Danger zone',
       `
       <p class="text-small text-dim">Resetting permanently deletes your save from this browser.</p>
@@ -79,4 +86,5 @@ export function render(container, { state, actions }) {
   );
 
   container.querySelector('#reset-btn').addEventListener('click', () => actions.resetGame());
+  container.querySelector('#reset-tutorial-btn')?.addEventListener('click', () => actions.resetGuidedHints());
 }

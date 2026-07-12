@@ -32,6 +32,16 @@ import {
   rejectContractInAppState,
   syncCareerState,
 } from './engines/careerStateAdapter.js';
+import {
+  applyProgressMarkers,
+} from './engines/guidedSeasonIntegration.js';
+import {
+  ensureGuidedSeason,
+  resetGuidedHints as resetGuidedSeasonHints,
+  resolveActiveStepForApp,
+  markStepDismissed as markGuidedHintDismissed,
+} from './engines/guidedSeason.js';
+import { renderGuidedHint } from './ui/guidedHint.js';
 import { COUNTRIES, COUNTRY_LIST } from './data/countries.js';
 import { EVENTS } from './data/events.js';
 import { getActivity } from './data/activities.js';
@@ -151,6 +161,7 @@ function newGameState({ name, gender, country, startYear }) {
     quarterRecap: null,
   };
   appState.careerState = ensureCareerState(appState);
+  appState.guidedSeason = ensureGuidedSeason(null);
   return appState;
 }
 
@@ -164,6 +175,7 @@ function hydrateRuntimeFields(loaded) {
   loaded.quarterEvidence = loaded.quarterEvidence ?? [];
   loaded.quarterRecap = loaded.quarterRecap ?? null;
   loaded.careerState = ensureCareerState(loaded);
+  loaded.guidedSeason = ensureGuidedSeason(loaded.guidedSeason);
   return loaded;
 }
 
@@ -321,6 +333,8 @@ async function rollEvent() {
       actions: evt.choices.map((c) => ({ id: c.id, label: c.label })),
     });
     if (!choiceId) choiceId = evt.choices[0].id;
+    const choiceMarked = applyProgressMarkers(state, 'choice.taken');
+    if (choiceMarked !== state) state.guidedSeason = choiceMarked.guidedSeason;
   }
 
   const result = applyEvent(state.player, evt, choiceId, state.eventHistory, state.quarterCounter);
@@ -343,6 +357,7 @@ async function endQuarter() {
   if (!proceed) return;
 
   const before = captureQuarterSnapshot(state.player);
+  const previousQuarterCounter = state.quarterCounter;
   advanceQuarter(state.player);
   if (state.carryBonus) {
     state.player.ap += state.carryBonus;
@@ -350,6 +365,7 @@ async function endQuarter() {
   }
   advanceWorldQuarter(state.world, state.rng);
   const fatigueBeforeRecovery = state.player.hidden.fatigue;
+  const previousAp = state.player.ap;
   recoverQuarter(state.player);
   const recoveredFatigue = state.player.hidden.fatigue - fatigueBeforeRecovery;
   if (recoveredFatigue !== 0) {
@@ -361,6 +377,11 @@ async function endQuarter() {
   }
   state.quarterCounter += 1;
   state.careerState = syncCareerState(state);
+
+  const marked = applyProgressMarkers(state, 'ap.refill', { previousAp });
+  if (marked !== state) state.guidedSeason = marked.guidedSeason;
+  const advanceMarked = applyProgressMarkers(state, 'quarter.advance', { previousQuarterCounter });
+  if (advanceMarked !== state) state.guidedSeason = advanceMarked.guidedSeason;
 
   await offerClubTrial();
   await runMatchMoment();
@@ -410,6 +431,8 @@ function buildActions() {
           gain: result.gain,
           fatigue: state.player.hidden.fatigue - fatigueBefore,
         });
+        const marked = applyProgressMarkers(state, 'ap.spend');
+        if (marked !== state) state.guidedSeason = marked.guidedSeason;
       }
       autosave();
       renderActiveApp();
@@ -430,6 +453,8 @@ function buildActions() {
       applyActivityEffects(state.player, activity);
       recordEffectEvidence(activity.label, activity.effects, before, state.player);
       showToast(`${activity.label}: ${activity.description}`);
+      const marked = applyProgressMarkers(state, 'ap.spend');
+      if (marked !== state) state.guidedSeason = marked.guidedSeason;
       autosave();
       renderActiveApp();
       renderShellStatus();
@@ -445,6 +470,8 @@ function buildActions() {
       applyActivityEffects(state.player, choice);
       recordEffectEvidence(choice.label, choice.effects, before, state.player);
       showToast(`${choice.label}: ${choice.description}`);
+      const marked = applyProgressMarkers(state, 'ap.spend');
+      if (marked !== state) state.guidedSeason = marked.guidedSeason;
       autosave();
       renderActiveApp();
       renderShellStatus();
@@ -465,6 +492,8 @@ function buildActions() {
           ? 'Physio session complete — recovery sped up.'
           : 'Already saw the physio this quarter — come back next quarter.'
       );
+      const marked = applyProgressMarkers(state, 'ap.spend');
+      if (marked !== state) state.guidedSeason = marked.guidedSeason;
       autosave();
       renderActiveApp();
       renderShellStatus();
@@ -544,6 +573,19 @@ function buildActions() {
     updateSettings(partial) {
       Object.assign(state.settings, partial);
       applySettingsToDocument();
+      autosave();
+      renderActiveApp();
+    },
+    dismissGuidedHint(stepId) {
+      const before = state.guidedSeason;
+      const after = markGuidedHintDismissed(before, stepId);
+      if (after === before) return;
+      state.guidedSeason = after;
+      autosave();
+      renderActiveApp();
+    },
+    resetGuidedHints() {
+      state.guidedSeason = resetGuidedSeasonHints(state.guidedSeason);
       autosave();
       renderActiveApp();
     },

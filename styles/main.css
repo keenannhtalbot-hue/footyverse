@@ -872,3 +872,81 @@ dialog::backdrop {
     grid-column: 1 / -1;
   }
 }
+
+/* ---------- Guided hint (first-run teaching) ---------- */
+
+.guided-hint {
+  position: relative;
+  border-color: var(--lime);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--lime) 8%, var(--navy-900)) 0%,
+    var(--navy-900) 100%
+  );
+  animation: guided-hint-enter 360ms ease-out both;
+}
+
+@keyframes guided-hint-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.guided-hint__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.guided-hint__icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.guided-hint__title {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.guided-hint__body {
+  margin: var(--space-2) 0;
+}
+
+.guided-hint__next {
+  margin-top: var(--space-2);
+}
+
+.guided-hint__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+
+.guided-hint__dismiss {
+  min-height: 36px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+}
+
+/* Reduced motion: never animate the hint entrance. */
+@media (prefers-reduced-motion: reduce) {
+  .guided-hint {
+    animation: none;
+  }
+}
+
+html[data-motion='reduced'] .guided-hint {
+  animation: none;
+}
+
+/* High-contrast: clear focus ring on the dismiss button. */
+html[data-contrast='high'] .guided-hint {
+  border-color: var(--lime);
+  border-width: 2px;
+}

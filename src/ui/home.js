@@ -1,6 +1,20 @@
 // Home app: status, current quarter, headline, recent story. No game logic.
 
 import { escapeHtml, card, emptyState } from './helpers.js';
+import {
+  resolveActiveStepForApp,
+  markStepDismissed as markGuidedHintDismissed,
+} from '../engines/guidedSeason.js';
+import { renderGuidedHint } from './guidedHint.js';
+
+export function renderGuidedHintForApp(state, actions, appId) {
+  const step = resolveActiveStepForApp(state, appId);
+  if (!step) return '';
+  return renderGuidedHint({
+    step,
+    onDismiss: () => actions.dismissGuidedHint(step.id),
+  });
+}
 
 function isSeniorCareer(state) {
   return state.careerState?.peopleById?.[state.careerState.playerId]?.career?.stage === 'senior';
@@ -132,9 +146,11 @@ export function renderQuarterRecap(recap) {
 export function render(container, { state, actions }) {
   const p = state.player;
   const recentStory = p.storyLedger.slice(-3).reverse();
+  const guidedHintHtml = renderGuidedHintForApp(state, actions, 'home');
 
   container.innerHTML = `
     ${renderQuarterRecap(state.quarterRecap)}
+    ${guidedHintHtml}
     ${renderHomeDashboard(state)}
     ${card(
       'Current status',
@@ -176,6 +192,14 @@ export function render(container, { state, actions }) {
   if (state.quarterRecap) {
     container.querySelector('[data-quarter-recap]')?.addEventListener('click', (event) => {
       actions.setQuarterRecapDismissed(event.currentTarget.getAttribute('data-quarter-recap') === 'dismiss');
+    });
+  }
+  const guidedDismiss = container.querySelector?.('[data-guided-dismiss]');
+  if (guidedDismiss && typeof guidedDismiss.closest === 'function' && typeof guidedDismiss.addEventListener === 'function') {
+    guidedDismiss.addEventListener('click', (event) => {
+      const dismissEl = event.currentTarget?.closest?.('[data-guided-step]');
+      const stepId = dismissEl?.getAttribute?.('data-guided-step');
+      if (stepId) actions.dismissGuidedHint(stepId);
     });
   }
 }

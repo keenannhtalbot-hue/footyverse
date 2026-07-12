@@ -120,3 +120,52 @@ test('serialize and deserialize persist quarter recap state with migration-safe 
   assert.equal(legacy.quarterRecap, null);
   assert.deepEqual(legacy.quarterEvidence, []);
 });
+
+test('serialize and deserialize round-trip the guidedSeason object alongside legacy fields', () => {
+  const guidedSeason = {
+    schemaVersion: 1,
+    seen: {
+      'home.objective': { dismissed: true, completed: true, at: 5 },
+    },
+    resetCount: 0,
+    lastUpdatedAt: 5,
+  };
+  const restored = deserializeState(JSON.parse(JSON.stringify(serializeState({
+    ...makeGameState(),
+    guidedSeason,
+  }))));
+
+  assert.deepEqual(restored.guidedSeason, guidedSeason);
+  assert.equal(restored.player.name, 'Test Player');
+  assert.equal(restored.quarterCounter, 5);
+});
+
+test('serializeState emits a null guidedSeason for legacy saves so hydration can default it safely', () => {
+  const serialized = serializeState(makeGameState());
+  assert.equal(serialized.guidedSeason, null);
+});
+
+test('deserializeState hydrates a missing guidedSeason into a safe empty shape via ensureGuidedSeason', () => {
+  const legacyJson = JSON.stringify({
+    version: 1,
+    savedAt: '2026-01-01T00:00:00.000Z',
+    state: {
+      player: { name: 'Legacy' },
+      world: { year: 2026 },
+      relationships: {},
+      settings: { theme: 'dark' },
+      quarterCounter: 0,
+      seed: 'legacy-seed',
+      eventHistory: { firedIds: [], lastFiredAt: [], log: [] },
+      // intentionally no guidedSeason key
+    },
+  });
+  const record = JSON.parse(legacyJson);
+  const restored = deserializeState(record.state);
+  // The deserialization boundary must always hand back a usable guidedSeason
+  // object so callers can call record*/ensureGuidedSeason without a separate
+  // hydration step.
+  assert.equal(restored.guidedSeason.schemaVersion, 1);
+  assert.deepEqual(restored.guidedSeason.seen, {});
+  assert.equal(restored.guidedSeason.resetCount, 0);
+});

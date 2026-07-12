@@ -2,6 +2,8 @@
 // eventHistory) to and from a plain JSON-safe shape for the save engine.
 // DOM-independent and pure.
 
+import { ensureGuidedSeason } from './guidedSeason.js';
+
 export function serializeState(state) {
   return {
     player: state.player,
@@ -20,6 +22,7 @@ export function serializeState(state) {
       lastFiredAt: [...state.eventHistory.lastFiredAt.entries()],
       log: state.eventHistory.log,
     },
+    guidedSeason: state.guidedSeason ?? null,
   };
 }
 
@@ -41,5 +44,10 @@ export function deserializeState(saved) {
       lastFiredAt: new Map(saved.eventHistory.lastFiredAt),
       log: saved.eventHistory.log,
     },
+    // Legacy saves predating guidedSeason get a null in the serialized JSON;
+    // we hydrate at the deserialization boundary so callers can use the
+    // returned object without an extra ensureGuidedSeason pass. main.js still
+    // calls ensureGuidedSeason on hydrateRuntimeFields as belt-and-braces.
+    guidedSeason: ensureGuidedSeason(saved.guidedSeason),
   };
 }
