@@ -35,6 +35,12 @@ function loadCss() {
   return readFileSync(resolve(here, '..', 'styles', 'main.css'), 'utf8');
 }
 
+function cssBlocks(css, pattern, label) {
+  const blocks = [...css.matchAll(pattern)].map((match) => match[0]);
+  assert.ok(blocks.length > 0, `${label} rule must exist`);
+  return blocks;
+}
+
 // Reach into the CSS source rather than running a browser, because
 // we already have evidence from headless Chrome that the current code
 // behaves correctly there. The bug is iOS-Safari-only; we cannot drive
@@ -46,39 +52,32 @@ test('CSS regression: bottom nav must not rely on position: fixed (iOS Safari ba
   // The whole point of the fix is to detach the nav from position: fixed
   // so that iOS Safari's broken fixed-element / visual-viewport interaction
   // cannot move it. If this assertion fails, the iOS Safari bug is back.
-  const navBlock = css.match(/\.app-launcher-nav\s*\{[^}]*\}/);
-  assert.ok(navBlock, '.app-launcher-nav rule must exist');
-  assert.doesNotMatch(
-    navBlock[0],
-    /position\s*:\s*fixed/,
-    '.app-launcher-nav must not be position:fixed — that is the iOS Safari bar-moves bug'
-  );
+  const navBlocks = cssBlocks(css, /\.app-launcher-nav\s*\{[^}]*\}/g, '.app-launcher-nav');
+  for (const navBlock of navBlocks) {
+    assert.doesNotMatch(
+      navBlock,
+      /position\s*:\s*fixed/,
+      '.app-launcher-nav must not be position:fixed — that is the iOS Safari bar-moves bug'
+    );
+  }
 });
 
 test('CSS regression: bottom nav must not anchor to viewport edges with bottom/left/right', () => {
   const css = loadCss();
-  const navBlock = css.match(/\.app-launcher-nav\s*\{[^}]*\}/);
-  assert.ok(navBlock);
-  // Once we move the nav into flex flow, it does not need left:0/right:0
-  // for full-width because #app-root already constrains the width.
-  // Keeping these would silently re-introduce fixed-position-style behaviour.
-  assert.doesNotMatch(navBlock[0], /\bbottom\s*:\s*0/);
-  assert.doesNotMatch(navBlock[0], /\bleft\s*:\s*0/);
-  assert.doesNotMatch(navBlock[0], /\bright\s*:\s*0/);
-  assert.doesNotMatch(navBlock[0], /\bz-index\s*:/);
+  const navBlocks = cssBlocks(css, /\.app-launcher-nav\s*\{[^}]*\}/g, '.app-launcher-nav');
+  for (const navBlock of navBlocks) {
+    assert.doesNotMatch(navBlock, /\bbottom\s*:\s*0/);
+    assert.doesNotMatch(navBlock, /\bleft\s*:\s*0/);
+    assert.doesNotMatch(navBlock, /\bright\s*:\s*0/);
+    assert.doesNotMatch(navBlock, /\bz-index\s*:/);
+  }
 });
 
 test('CSS regression: bottom nav must keep safe-area-inset-bottom for home-indicator handsets', () => {
   const css = loadCss();
-  const navBlock = css.match(/\.app-launcher-nav\s*\{[^}]*\}/);
-  assert.ok(navBlock);
-  // Even in normal flow the nav still needs to clear the home-indicator
-  // gesture zone on iPhones. Without this, taps on the bottom row of buttons
-  // would conflict with the iOS swipe-up gesture and the user-reported
-  // "exiting the app" symptom would return.
-  assert.match(
-    navBlock[0],
-    /env\(\s*safe-area-inset-bottom\s*\)/,
+  const navBlocks = cssBlocks(css, /\.app-launcher-nav\s*\{[^}]*\}/g, '.app-launcher-nav');
+  assert.ok(
+    navBlocks.some((navBlock) => /env\(\s*safe-area-inset-bottom\s*\)/.test(navBlock)),
     '.app-launcher-nav must use env(safe-area-inset-bottom) so the home-indicator gesture zone stays clear of buttons'
   );
 });
@@ -89,57 +88,50 @@ test('CSS regression: shell and app-content must allow nested scrolling inside t
   // pretend to be), its flex parent must allow it to shrink below its
   // content height. Without min-height: 0 on .shell and .app-content, flex
   // children refuse to scroll and content overflows visually instead.
-  const shellBlock = css.match(/\.shell\s*\{[^}]*\}/);
-  const contentBlock = css.match(/\.app-content\s*\{[^}]*\}/);
-  assert.ok(shellBlock, '.shell rule must exist');
-  assert.ok(contentBlock, '.app-content rule must exist');
-  assert.match(shellBlock[0], /min-height\s*:\s*0/, '.shell must allow flex shrinking so .app-content can scroll');
-  assert.match(contentBlock[0], /min-height\s*:\s*0/, '.app-content must allow flex shrinking to enable internal scroll');
-  assert.match(contentBlock[0], /overflow-y\s*:\s*auto/, '.app-content must be the scroll container');
+  const shellBlocks = cssBlocks(css, /\.shell\s*\{[^}]*\}/g, '.shell');
+  const contentBlocks = cssBlocks(css, /\.app-content\s*\{[^}]*\}/g, '.app-content');
+  assert.ok(shellBlocks.some((block) => /min-height\s*:\s*0/.test(block)), '.shell must allow flex shrinking so .app-content can scroll');
+  assert.ok(contentBlocks.some((block) => /min-height\s*:\s*0/.test(block)), '.app-content must allow flex shrinking to enable internal scroll');
+  assert.ok(contentBlocks.some((block) => /overflow-y\s*:\s*auto/.test(block)), '.app-content must be the scroll container');
 });
 
 test('CSS regression: app-content must not reserve a phantom 88px gap for the old fixed bar', () => {
   const css = loadCss();
-  const contentBlock = css.match(/\.app-content\s*\{[^}]*\}/);
-  assert.ok(contentBlock);
+  const contentBlocks = cssBlocks(css, /\.app-content\s*\{[^}]*\}/g, '.app-content');
   // The 88px bottom-padding existed only to push content above the old
   // position:fixed nav. Once the nav is in normal flow, that pad is a
   // dead zone of empty space below the scroll area — confusing and ugly.
-  assert.doesNotMatch(
-    contentBlock[0],
-    /padding-bottom\s*:\s*calc\(\s*88px/,
-    '.app-content padding-bottom must not reserve space for a non-existent fixed bar'
-  );
+  for (const contentBlock of contentBlocks) {
+    assert.doesNotMatch(
+      contentBlock,
+      /padding-bottom\s*:\s*calc\(\s*88px/,
+      '.app-content padding-bottom must not reserve space for a non-existent fixed bar'
+    );
+  }
 });
 
 test('CSS regression: app-root must cap at the dynamic viewport so app-content becomes the scroll container', () => {
   const css = loadCss();
-  const rootBlock = css.match(/#app-root\s*\{[^}]*\}/);
-  assert.ok(rootBlock, '#app-root rule must exist');
-  // height (not min-height) caps the parent to the dynamic viewport so
-  // .app-content's overflow-y: auto actually has a constrained height to
-  // scroll inside. With only min-height, #app-root grows to fit content,
-  // .app-content has no overflow to scroll, the whole document scrolls,
-  // and the bottom nav gets pushed off-screen behind the content.
-  assert.match(rootBlock[0], /height\s*:\s*100vh/);
-  assert.match(
-    rootBlock[0],
-    /height\s*:\s*100dvh/,
+  const rootBlocks = cssBlocks(css, /#app-root\s*\{[^}]*\}/g, '#app-root');
+  assert.ok(rootBlocks.some((block) => /height\s*:\s*100vh/.test(block)));
+  assert.ok(
+    rootBlocks.some((block) => /height\s*:\s*100dvh/.test(block)),
     '#app-root must cap to the dynamic viewport (100dvh) so the keyboard/URL-bar/visual-viewport changes push content up rather than pushing the nav off-screen'
   );
-  assert.doesNotMatch(
-    rootBlock[0],
-    /min-height\s*:\s*100dvh/,
-    'min-height alone lets #app-root grow to content height — the nav then disappears behind the content. Use height, not min-height.'
-  );
+  for (const rootBlock of rootBlocks) {
+    assert.doesNotMatch(
+      rootBlock,
+      /min-height\s*:\s*100dvh/,
+      'min-height alone lets #app-root grow to content height — the nav then disappears behind the content. Use height, not min-height.'
+    );
+  }
 });
 
 test('CSS regression: #app-root is a flex column so the nav can live in normal flow at the bottom', () => {
   const css = loadCss();
-  const rootBlock = css.match(/#app-root\s*\{[^}]*\}/);
-  assert.ok(rootBlock);
-  assert.match(rootBlock[0], /display\s*:\s*flex/);
-  assert.match(rootBlock[0], /flex-direction\s*:\s*column/);
+  const rootBlocks = cssBlocks(css, /#app-root\s*\{[^}]*\}/g, '#app-root');
+  assert.ok(rootBlocks.some((block) => /display\s*:\s*flex/.test(block)));
+  assert.ok(rootBlocks.some((block) => /flex-direction\s*:\s*column/.test(block)));
 });
 
 test('DOM regression: renderShell must emit the bottom nav as a sibling of .shell (not inside it)', () => {
@@ -157,7 +149,10 @@ test('DOM regression: renderShell must emit the bottom nav as a sibling of .shel
   // Ensure the bottom-nav is NOT wrapped inside the .shell div.
   const shellIdx = tpl.indexOf('<div class="shell"');
   const navIdx = tpl.indexOf('<nav class="app-launcher-nav"');
+  assert.notEqual(shellIdx, -1, 'shell opening tag must be found before comparing sibling order');
+  assert.notEqual(navIdx, -1, 'bottom-nav opening tag must be found before comparing sibling order');
   const shellEnd = tpl.indexOf('</div>', shellIdx);
+  assert.notEqual(shellEnd, -1, 'shell closing tag must be found before comparing sibling order');
   assert.ok(
     navIdx > shellEnd,
     '.app-launcher-nav must be a sibling of .shell (after </div>), not nested inside it — otherwise it cannot sit at the bottom of the flex column'
