@@ -2,6 +2,7 @@
 // The adapter is deterministic and keeps the professional simulation JSON-safe.
 
 import { reduceCareerCommand } from './careerOrchestrator.js';
+import { expireContracts } from './contractEngine.js';
 
 const PROFESSIONAL_AGE = 16;
 const TICKS_PER_YEAR = 32;
@@ -33,7 +34,7 @@ export function createCareerStateForPlayer(player, tick) {
         attributes: structuredClone(player.stats ?? {}),
         hidden: structuredClone(player.hidden ?? {}),
         career: {
-          stage: eligible ? 'senior' : 'grassroots',
+          stage: 'grassroots',
           currentTeamId: null,
           currentContractId: null,
           parentClubTeamId: null,
@@ -107,7 +108,7 @@ export function syncCareerState(appState) {
   if (appState.player.age >= PROFESSIONAL_AGE && !hasCareerActivity) {
     return createCareerStateForPlayer(appState.player, appState.quarterCounter ?? 0);
   }
-  return {
+  return expireContracts({
     ...current,
     clock: {
       ...current.clock,
@@ -115,7 +116,7 @@ export function syncCareerState(appState) {
       year: appState.player.year,
       quarterIndex: appState.player.quarterIndex,
     },
-  };
+  });
 }
 
 export function acceptContractInAppState(appState, negotiationId, persist) {
@@ -126,9 +127,32 @@ export function acceptContractInAppState(appState, negotiationId, persist) {
     });
     const clubId = careerState.negotiationsById[negotiationId].toClubId;
     const clubName = careerState.clubsById[clubId]?.name ?? 'your new club';
+    const player = {
+      ...appState.player,
+      club: clubName,
+      pathway: 'Senior team',
+      careerHistory: [
+        ...(appState.player.careerHistory ?? []),
+        {
+          type: 'signed_professional_contract',
+          club: clubName,
+          age: appState.player.age,
+          year: appState.player.year,
+        },
+      ],
+    };
+    const quarterEvidence = [...(appState.quarterEvidence ?? [])];
+    quarterEvidence.push({
+      kind: 'career',
+      label: 'Senior debut',
+      outcome: `Signed a professional contract with ${clubName}.`,
+      id: `${appState.quarterCounter ?? careerState.clock.tick}-${quarterEvidence.length}`,
+    });
     const next = {
       ...appState,
+      player,
       careerState,
+      quarterEvidence,
       contractFeedback: {
         type: 'success',
         message: `Contract accepted — welcome to ${clubName}!`,

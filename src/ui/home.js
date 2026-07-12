@@ -2,8 +2,13 @@
 
 import { escapeHtml, card, emptyState } from './helpers.js';
 
+function isSeniorCareer(state) {
+  return state.careerState?.peopleById?.[state.careerState.playerId]?.career?.stage === 'senior';
+}
+
 export function deriveHomeObjectives(state) {
   const p = state.player;
+  const isSenior = isSeniorCareer(state);
   const injured = Boolean(p.injury && p.injury.quartersOut > 0);
   const immediate = injured
     ? `Recover from ${p.injury.label} before returning to full training.`
@@ -15,9 +20,11 @@ export function deriveHomeObjectives(state) {
     : p.position
       ? `Keep growing as a ${p.position} with ${p.club}.`
       : `Play for ${p.club} so your coach can learn your best position.`;
-  const longTerm = p.age < 16
-    ? 'Grow your game step by step on the journey to age 16.'
-    : 'Finish your youth journey and choose your first senior step.';
+  const longTerm = isSenior
+    ? `Build your senior career with ${p.club ?? 'your professional club'}.`
+    : p.age < 16
+      ? 'Grow your game step by step on the journey to age 16.'
+      : 'Finish your youth journey and choose your first senior step.';
 
   return { immediate, season, longTerm };
 }
@@ -86,7 +93,7 @@ export function renderHomeDashboard(state) {
     <div class="home-objectives">
       <div class="home-objective"><h3>Right now</h3><p>${escapeHtml(objectives.immediate)}</p></div>
       <div class="home-objective"><h3>This season</h3><p>${escapeHtml(objectives.season)}</p></div>
-      <div class="home-objective"><h3>Youth journey</h3><p>${escapeHtml(objectives.longTerm)}</p></div>
+      <div class="home-objective"><h3>${isSeniorCareer(state) ? 'Senior career' : 'Youth journey'}</h3><p>${escapeHtml(objectives.longTerm)}</p></div>
     </div>
     <div class="home-next-action">
       <p class="section-title">Next action</p>

@@ -13,6 +13,11 @@ import {
   parseCounterTerms,
   renderContractInbox,
 } from '../src/ui/contracts.js';
+import { createEventHistory } from '../src/engines/eventEngine.js';
+import { deserializeState, serializeState } from '../src/engines/stateSerializer.js';
+import { deriveHomeObjectives, renderHomeDashboard } from '../src/ui/home.js';
+import { render as renderFootball } from '../src/ui/football.js';
+import { buildQuarterRecap } from '../src/engines/quarterRecap.js';
 
 function makePlayer(overrides = {}) {
   return {
@@ -101,6 +106,124 @@ test('accept applies the orchestrator result once and only persists successful c
   assert.equal(retried.careerState, accepted.careerState);
   assert.match(retried.contractFeedback.message, /not open/i);
   assert.equal(persisted.length, 1);
+});
+
+test('accepting the first professional contract completes and persists the senior club transition', () => {
+  const player = makePlayer({
+    club: 'Riverside Juniors',
+    pathway: 'England youth pathway',
+    quarter: 'Spring',
+    ap: 12,
+    apMax: 12,
+    position: 'midfielder',
+    injury: null,
+    matchObservations: 8,
+    careerHistory: [],
+    storyLedger: [],
+  });
+  const appState = {
+    player,
+    careerState: createCareerStateForPlayer(player, 44),
+    world: {},
+    relationships: { coach: { name: 'Coach Rowan', personality: 'supportive' } },
+    settings: {},
+    quarterCounter: 44,
+    seed: 'contract-transition',
+    eventHistory: createEventHistory(),
+  };
+  assert.equal(appState.careerState.peopleById['person-player'].career.stage, 'grassroots');
+
+  const accepted = acceptContractInAppState(appState, 'negotiation-contract-1', () => {});
+  const career = accepted.careerState.peopleById['person-player'].career;
+  const activeRegistrations = Object.values(accepted.careerState.registrationsById)
+    .filter((registration) => registration.personId === 'person-player' && registration.active);
+
+  assert.equal(Object.values(accepted.careerState.contractsById)
+    .filter((contract) => contract.personId === 'person-player' && contract.status === 'active').length, 1);
+  assert.equal(activeRegistrations.length, 1);
+  assert.equal(activeRegistrations[0].kind, 'permanent');
+  assert.equal(activeRegistrations[0].teamId, 'team-redbrook-senior');
+  assert.deepEqual(
+    accepted.careerState.teamsById['team-redbrook-senior'].squadPersonIds,
+    ['person-player'],
+  );
+  assert.equal(career.currentContractId, 'contract-1');
+  assert.equal(career.currentTeamId, 'team-redbrook-senior');
+  assert.equal(career.stage, 'senior');
+  assert.equal(accepted.careerState.negotiationsById['negotiation-contract-1'].status, 'accepted');
+  assert.equal(accepted.player.club, 'Redbrook Town FC');
+  assert.equal(accepted.player.pathway, 'Senior team');
+  assert.doesNotMatch(renderHomeDashboard(accepted), /finish your youth journey|first senior step/i);
+  assert.match(deriveHomeObjectives(accepted).longTerm, /senior|professional/i);
+
+  const footballContainer = { innerHTML: '' };
+  renderFootball(footballContainer, { state: accepted });
+  assert.match(footballContainer.innerHTML, /Redbrook Town FC/);
+  assert.match(footballContainer.innerHTML, /Senior team/);
+
+  const restored = deserializeState(JSON.parse(JSON.stringify(serializeState(accepted))));
+  restored.quarterCounter = 45;
+  restored.player.quarterIndex = 1;
+  restored.player.quarter = 'Summer';
+  restored.careerState = syncCareerState(restored);
+  assert.equal(restored.careerState.clock.tick, 45);
+  assert.equal(restored.careerState.peopleById['person-player'].career.stage, 'senior');
+  assert.equal(restored.careerState.peopleById['person-player'].career.currentTeamId, 'team-redbrook-senior');
+  assert.equal(restored.player.club, 'Redbrook Town FC');
+  assert.equal(getContractOffers(restored.careerState)[0].expired, false);
+  assert.doesNotMatch(renderContractInbox(restored.careerState), /data-accept-contract|This offer has expired/);
+});
+
+test('accepted contract closes the inbox and records a causal senior-debut recap fact', () => {
+  const player = makePlayer({ club: 'Riverside Juniors', pathway: 'England youth pathway' });
+  const appState = {
+    player,
+    careerState: createCareerStateForPlayer(player, 44),
+    quarterCounter: 44,
+    quarterEvidence: [],
+  };
+
+  const accepted = acceptContractInAppState(appState, 'negotiation-contract-1', () => {});
+  const inbox = renderContractInbox(accepted.careerState);
+
+  assert.match(inbox, /Senior contract in place\. The youth chapter is closed; see your club panel for next steps\./);
+  assert.doesNotMatch(inbox, /data-accept-contract|data-counter-contract|data-reject-contract/);
+  assert.equal(accepted.quarterEvidence.length, 1);
+  assert.deepEqual(accepted.quarterEvidence[0], {
+    kind: 'career',
+    label: 'Senior debut',
+    outcome: 'Signed a professional contract with Redbrook Town FC.',
+    id: '44-0',
+  });
+
+  const recap = buildQuarterRecap({
+    quarter: 45,
+    from: { quarter: 'Spring', year: 2037, age: 16, fatigue: 0 },
+    to: { quarter: 'Summer', year: 2037, age: 16, fatigue: 0 },
+    evidence: accepted.quarterEvidence,
+  });
+  assert.deepEqual(recap.highlights[0], 'Senior debut → Signed a professional contract with Redbrook Town FC.');
+});
+
+test('career clock sync expires due professional contracts without reverting the senior club', () => {
+  const player = makePlayer({ club: 'Riverside Juniors', pathway: 'England youth pathway' });
+  const appState = {
+    player,
+    careerState: createCareerStateForPlayer(player, 44),
+    quarterCounter: 44,
+    quarterEvidence: [],
+  };
+  const accepted = acceptContractInAppState(appState, 'negotiation-contract-1', () => {});
+  accepted.careerState.contractsById['contract-1'].endTick = 45;
+  accepted.quarterCounter = 45;
+
+  const synced = syncCareerState(accepted);
+
+  assert.equal(synced.contractsById['contract-1'].status, 'expired');
+  assert.equal(synced.peopleById['person-player'].career.stage, 'senior');
+  assert.equal(accepted.player.club, 'Redbrook Town FC');
+  assert.equal(synced.negotiationsById['negotiation-contract-1'].status, 'accepted');
+  assert.match(renderContractInbox(synced), /contract term has ended|post-contract career decision is not implemented/i);
 });
 
 test('expired acceptance reports the engine error without mutating or persisting state', () => {

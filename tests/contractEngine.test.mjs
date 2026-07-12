@@ -13,9 +13,27 @@ function makeState(overrides = {}) {
     schemaVersion: 2,
     clock: { tick: 500, year: 2028, quarterIndex: 0, week: 1 },
     peopleById: {
-      'person-player': { id: 'person-player', kind: 'player' },
+      'person-player': {
+        id: 'person-player',
+        career: {
+          stage: 'senior',
+          currentTeamId: 'team-redbrook-senior',
+          currentContractId: 'contract-1',
+          parentClubTeamId: null,
+          loanTeamId: null,
+        },
+      },
+    },
+    clubsById: {
+      'club-redbrook': { id: 'club-redbrook', teamIds: ['team-redbrook-senior'] },
+    },
+    teamsById: {
+      'team-redbrook-senior': {
+        id: 'team-redbrook-senior', clubId: 'club-redbrook', level: 'senior', squadPersonIds: [],
+      },
     },
     contractsById: {},
+    registrationsById: {},
     negotiationsById: {
       'negotiation-1': {
         id: 'negotiation-1', kind: 'professional-offer', personId: 'person-player',
@@ -211,6 +229,27 @@ test('acceptContractOffer rejects stored malformed terms before creating a contr
 
   assert.throws(() => acceptContractOffer(state, 'negotiation-1'), /contract terms/i);
   assert.deepEqual(state, snapshot);
+});
+
+test('acceptContractOffer rejects malformed destinations and active registrations atomically', () => {
+  const cases = [
+    (state) => { state.clubsById['club-redbrook'].teamIds = []; },
+    (state) => { state.teamsById['team-redbrook-senior'].level = 'youth'; },
+    (state) => {
+      state.registrationsById['registration-existing'] = {
+        id: 'registration-existing', personId: 'person-player', teamId: 'team-redbrook-senior',
+        kind: 'permanent', active: true,
+      };
+    },
+  ];
+
+  for (const prepare of cases) {
+    const state = makeState();
+    prepare(state);
+    const snapshot = structuredClone(state);
+    assert.throws(() => acceptContractOffer(state, 'negotiation-1'));
+    assert.deepEqual(state, snapshot);
+  }
 });
 
 test('expireContracts marks active contracts whose endTick has passed as expired, leaving future and non-active contracts unchanged and the input untouched', () => {

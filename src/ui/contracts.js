@@ -55,23 +55,41 @@ function formatDuration(ticks) {
 }
 
 export function getContractOffers(careerState) {
+  const currentContractId = careerState?.peopleById?.[careerState.playerId]?.career?.currentContractId;
+  const currentContract = currentContractId
+    ? careerState.contractsById?.[currentContractId]
+    : null;
   return Object.values(careerState?.negotiationsById ?? {})
     .filter((offer) => offer.kind === 'professional-offer' && offer.personId === careerState.playerId)
     .sort((left, right) => left.expiresTick - right.expiresTick || left.id.localeCompare(right.id))
     .map((offer) => ({
       ...offer,
       clubName: careerState.clubsById?.[offer.toClubId]?.name ?? 'Unknown club',
-      expired: careerState.clock.tick > offer.expiresTick,
+      contractStatus: offer.status === 'accepted' ? currentContract?.status ?? null : null,
+      expired: offer.status === 'open' && careerState.clock.tick > offer.expiresTick,
     }));
 }
 
 function offerHtml(offer, currentTick) {
   const roundsRemaining = Math.max(0, offer.maxRounds - offer.roundsUsed);
   const stale = offer.expired || offer.status !== 'open';
+  const termEnded = offer.status === 'accepted' && offer.contractStatus === 'expired';
   const status = offer.expired ? 'Expired' : capitalize(offer.status);
+  const timing = offer.expired
+    ? 'This offer has expired.'
+    : termEnded
+      ? 'The contract term has ended.'
+      : offer.status === 'accepted'
+        ? 'This contract is active; the offer is no longer time-limited.'
+        : `Expires in ${offer.expiresTick - currentTick} ticks`;
+  const acceptedNote = termEnded
+    ? '<p class="offer-feedback" role="status">The contract term has ended. Your senior club status remains recorded; a post-contract career decision is not implemented yet.</p>'
+    : offer.status === 'accepted'
+      ? '<p class="offer-feedback" role="status">Senior contract in place. The youth chapter is closed; see your club panel for next steps.</p>'
+      : '';
   return card(
     `<span class="offer-card__club">${escapeHtml(offer.clubName)}</span>`,
-    `<p class="text-dim">${offer.expired ? 'This offer has expired.' : `Expires in ${offer.expiresTick - currentTick} ticks`}</p>
+    `<p class="text-dim">${timing}</p>
     <dl class="offer-terms">
       <div><dt>Duration</dt><dd>${formatDuration(offer.terms.durationTicks)}</dd></div>
       <div><dt>Weekly wage</dt><dd>${formatMoney(offer.terms.wagePerWeekMinor)}/week</dd></div>
@@ -80,6 +98,7 @@ function offerHtml(offer, currentTick) {
       ${offer.terms.releaseFeeMinor == null ? '' : `<div><dt>Release fee</dt><dd>${formatMoney(offer.terms.releaseFeeMinor)}</dd></div>`}
       <div><dt>Negotiation</dt><dd>${roundsRemaining} counter round${roundsRemaining === 1 ? '' : 's'} remaining</dd></div>
     </dl>
+    ${acceptedNote}
     ${stale
       ? `<p class="offer-feedback" role="status">${escapeHtml(status)} — no action is available.</p>`
       : `<div class="offer-actions">

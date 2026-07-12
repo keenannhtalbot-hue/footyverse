@@ -16,6 +16,16 @@ function makeState(overrides = {}) {
           loanTeamId: null,
         },
       },
+      'person-free-agent': {
+        id: 'person-free-agent',
+        career: {
+          stage: 'grassroots',
+          currentTeamId: null,
+          currentContractId: null,
+          parentClubTeamId: null,
+          loanTeamId: null,
+        },
+      },
     },
     clubsById: {
       'club-redbrook': {
@@ -29,10 +39,10 @@ function makeState(overrides = {}) {
     },
     teamsById: {
       'team-redbrook-senior': {
-        id: 'team-redbrook-senior', clubId: 'club-redbrook', squadPersonIds: ['person-player'],
+        id: 'team-redbrook-senior', clubId: 'club-redbrook', level: 'senior', squadPersonIds: ['person-player'],
       },
       'team-rheintal-senior': {
-        id: 'team-rheintal-senior', clubId: 'club-rheintal', squadPersonIds: [],
+        id: 'team-rheintal-senior', clubId: 'club-rheintal', level: 'senior', squadPersonIds: [],
       },
     },
     contractsById: {
@@ -96,7 +106,7 @@ test('ACCEPT_CONTRACT delegates acceptance and emits one deterministic event wit
     id: 'event-1', tick: 500, type: 'CONTRACT_ACCEPTED',
     refs: {
       negotiationId: 'negotiation-contract-1', personId: 'person-free-agent',
-      clubId: 'club-rheintal', contractId: 'contract-1',
+      clubId: 'club-rheintal', contractId: 'contract-2', registrationId: 'registration-2',
     },
     payload: {
       durationTicks: 96, wagePerWeekMinor: 120000,

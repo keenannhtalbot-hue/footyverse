@@ -42,12 +42,16 @@ export function buildQuarterRecap({ quarter, from, to, evidence = [] }) {
 
 function formatEvidence(fact) {
   if (!fact?.label) return null;
+  if (fact.kind === 'career' && fact.outcome) {
+    const punctuation = /[.!?]$/.test(fact.outcome) ? '' : '.';
+    return `${fact.label} → ${fact.outcome}${punctuation}`;
+  }
   if (fact.kind === 'training' && fact.gain > 0) {
     const stat = titleCase(fact.stat);
     const fatigue = fact.fatigue > 0 ? `, but fatigue +${fact.fatigue}` : '';
     return `${fact.label} → ${stat} +${fact.gain}${fatigue}.`;
   }
-  if ((fact.kind === 'match' || fact.kind === 'event') && fact.outcome) {
+  if ((fact.kind === 'match' || fact.kind === 'event' || fact.kind === 'career') && fact.outcome) {
     const punctuation = /[.!?]$/.test(fact.outcome) ? '' : '.';
     return `${fact.label} → ${fact.outcome}${punctuation}`;
   }

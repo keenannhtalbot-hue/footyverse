@@ -106,6 +106,7 @@ export function reduceCareerCommand(state, command) {
       personId: negotiation.personId,
       clubId: negotiation.toClubId,
       contractId: transition.contractId,
+      registrationId: transition.registrationId,
     }, {
       durationTicks: negotiation.terms.durationTicks,
       wagePerWeekMinor: negotiation.terms.wagePerWeekMinor,
