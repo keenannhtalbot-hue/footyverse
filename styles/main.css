@@ -148,8 +148,8 @@ p {
 /* ---------- App shell ---------- */
 
 #app-root {
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   padding-top: env(safe-area-inset-top);
@@ -158,6 +158,7 @@ p {
 
 .shell {
   display: flex;
+  min-height: 0;
   flex: 1;
   max-width: var(--shell-max-width);
   margin: 0 auto;
@@ -238,23 +239,20 @@ p {
 .app-content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
   padding: var(--space-4);
-  padding-bottom: calc(88px + var(--space-4));
   padding-left: max(var(--space-4), env(safe-area-inset-left));
   padding-right: max(var(--space-4), env(safe-area-inset-right));
 }
 
 .app-launcher-nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  flex-shrink: 0;
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   background: var(--navy-900);
   border-top: 1px solid var(--charcoal-600);
   padding: var(--space-1) max(var(--space-1), env(safe-area-inset-left)) max(var(--space-1), env(safe-area-inset-bottom));
-  z-index: 20;
 }
 
 .app-launcher-nav__more {
