@@ -1,7 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { renderGuidedHint } from '../src/ui/guidedHint.js';
 import { createGuidedSeason, ensureGuidedSeason } from '../src/engines/guidedSeason.js';
+
+const MAIN_SOURCE = readFileSync(resolve(process.cwd(), 'src/main.js'), 'utf8');
 
 function makeStep(id) {
   return {
@@ -12,6 +16,17 @@ function makeStep(id) {
     next: null,
   };
 }
+
+test('main wires every progress marker result back into player and guidedSeason state', () => {
+  const playerMerges = MAIN_SOURCE.match(/state\.player\s*=\s*(?:marked|choiceMarked|advanceMarked)\.player/g) ?? [];
+  assert.ok(playerMerges.length >= 8, `expected all eight marker call sites to merge player state, found ${playerMerges.length}`);
+});
+
+test('main wires the home.opened marker after rendering Home without hiding the first hint', () => {
+  assert.match(MAIN_SOURCE, /if\s*\(state\.activeApp === ['"]home['"]\)\s*\{[\s\S]*?queueMicrotask\(/);
+  assert.match(MAIN_SOURCE, /applyProgressMarkers\(state, ['"]home\.opened['"]\)/);
+  assert.match(MAIN_SOURCE, /state\.guidedSeason\s*=\s*marked\.guidedSeason/);
+});
 
 test('renderGuidedHint returns empty string when step is null so it can be inlined safely', () => {
   // The Home/Football renders will call renderGuidedHint({ step, onDismiss })

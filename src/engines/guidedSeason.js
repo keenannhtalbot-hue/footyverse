@@ -197,7 +197,7 @@ export function resolveActiveStep(state) {
 
   // Auto-complete steps whose triggers are already satisfied so the player
   // never sees a hint that they have already done.
-  if (active === 'home.objective' && (state.openedHomeOnce ?? hasAnyEngagement(seen))) {
+  if (active === 'home.objective' && (player.openedHomeOnce ?? hasAnyEngagement(seen))) {
     seen = finalizeSeen(seen, 'home.objective');
     active = firstUnseenStepId(seen);
   }

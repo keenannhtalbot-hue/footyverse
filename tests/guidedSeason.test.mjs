@@ -79,6 +79,13 @@ test('resolveActiveStep returns the first home.objective moment for a brand-new 
   assert.match(step.body, /home/i);
 });
 
+test('resolveActiveStep treats a recorded Home opening as completed using the player marker', () => {
+  const state = makeState({ player: { openedHomeOnce: true } });
+  const step = resolveActiveStep(state);
+  assert.ok(step);
+  assert.equal(step.id, 'ap.spend');
+});
+
 test('resolveActiveStep returns null after every step has been completed or dismissed', () => {
   const seen = {};
   for (const id of ['home.objective', 'ap.spend', 'fatigue', 'choice.moment', 'quarter.advance', 'recap.read']) {

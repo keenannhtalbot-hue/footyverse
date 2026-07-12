@@ -41,7 +41,6 @@ import {
   resolveActiveStepForApp,
   markStepDismissed as markGuidedHintDismissed,
 } from './engines/guidedSeason.js';
-import { renderGuidedHint } from './ui/guidedHint.js';
 import { COUNTRIES, COUNTRY_LIST } from './data/countries.js';
 import { EVENTS } from './data/events.js';
 import { getActivity } from './data/activities.js';
@@ -334,7 +333,10 @@ async function rollEvent() {
     });
     if (!choiceId) choiceId = evt.choices[0].id;
     const choiceMarked = applyProgressMarkers(state, 'choice.taken');
-    if (choiceMarked !== state) state.guidedSeason = choiceMarked.guidedSeason;
+    if (choiceMarked !== state) {
+      state.player = choiceMarked.player;
+      state.guidedSeason = choiceMarked.guidedSeason;
+    }
   }
 
   const result = applyEvent(state.player, evt, choiceId, state.eventHistory, state.quarterCounter);
@@ -379,9 +381,15 @@ async function endQuarter() {
   state.careerState = syncCareerState(state);
 
   const marked = applyProgressMarkers(state, 'ap.refill', { previousAp });
-  if (marked !== state) state.guidedSeason = marked.guidedSeason;
+  if (marked !== state) {
+    state.player = marked.player;
+    state.guidedSeason = marked.guidedSeason;
+  }
   const advanceMarked = applyProgressMarkers(state, 'quarter.advance', { previousQuarterCounter });
-  if (advanceMarked !== state) state.guidedSeason = advanceMarked.guidedSeason;
+  if (advanceMarked !== state) {
+    state.player = advanceMarked.player;
+    state.guidedSeason = advanceMarked.guidedSeason;
+  }
 
   await offerClubTrial();
   await runMatchMoment();
@@ -432,7 +440,10 @@ function buildActions() {
           fatigue: state.player.hidden.fatigue - fatigueBefore,
         });
         const marked = applyProgressMarkers(state, 'ap.spend');
-        if (marked !== state) state.guidedSeason = marked.guidedSeason;
+        if (marked !== state) {
+          state.player = marked.player;
+          state.guidedSeason = marked.guidedSeason;
+        }
       }
       autosave();
       renderActiveApp();
@@ -454,7 +465,10 @@ function buildActions() {
       recordEffectEvidence(activity.label, activity.effects, before, state.player);
       showToast(`${activity.label}: ${activity.description}`);
       const marked = applyProgressMarkers(state, 'ap.spend');
-      if (marked !== state) state.guidedSeason = marked.guidedSeason;
+      if (marked !== state) {
+        state.player = marked.player;
+        state.guidedSeason = marked.guidedSeason;
+      }
       autosave();
       renderActiveApp();
       renderShellStatus();
@@ -471,7 +485,10 @@ function buildActions() {
       recordEffectEvidence(choice.label, choice.effects, before, state.player);
       showToast(`${choice.label}: ${choice.description}`);
       const marked = applyProgressMarkers(state, 'ap.spend');
-      if (marked !== state) state.guidedSeason = marked.guidedSeason;
+      if (marked !== state) {
+        state.player = marked.player;
+        state.guidedSeason = marked.guidedSeason;
+      }
       autosave();
       renderActiveApp();
       renderShellStatus();
@@ -493,7 +510,10 @@ function buildActions() {
           : 'Already saw the physio this quarter — come back next quarter.'
       );
       const marked = applyProgressMarkers(state, 'ap.spend');
-      if (marked !== state) state.guidedSeason = marked.guidedSeason;
+      if (marked !== state) {
+        state.player = marked.player;
+        state.guidedSeason = marked.guidedSeason;
+      }
       autosave();
       renderActiveApp();
       renderShellStatus();
@@ -731,6 +751,21 @@ function renderActiveApp() {
   app.module.render(container, { state, actions });
   renderShellStatus();
   document.title = `FootyVerse — ${app.label}`;
+
+  if (state.activeApp === 'home') {
+    // Let the first Home render show the objective hint before recording that
+    // the player has opened Home. The marker persists without a second render,
+    // so a reload knows the opening was seen while the current card remains
+    // available for dismissal.
+    queueMicrotask(() => {
+      if (!state || state.activeApp !== 'home') return;
+      const marked = applyProgressMarkers(state, 'home.opened');
+      if (marked === state) return;
+      state.player = marked.player;
+      state.guidedSeason = marked.guidedSeason;
+      autosave();
+    });
+  }
 }
 
 function renderAll() {
