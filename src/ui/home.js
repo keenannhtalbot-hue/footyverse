@@ -30,6 +30,7 @@ export function deriveHomeObjectives(state) {
   const isSenior = isSeniorCareer(state);
   const hasActiveContract = hasActiveProfessionalContract(state);
   const endedContract = isSenior && !hasActiveContract && p.club;
+  const seniorWithoutClub = isSenior && !hasActiveContract && !p.club;
   const injured = Boolean(p.injury && p.injury.quartersOut > 0);
   const immediate = injured
     ? `Recover from ${p.injury.label} before returning to full training.`
@@ -37,14 +38,20 @@ export function deriveHomeObjectives(state) {
       ? `Use your ${p.ap} AP to improve before ${p.quarter} ends.`
       : `${p.quarter} is complete. Move on when you are ready.`;
   const season = endedContract
-    ? `Your contract with ${p.club} has ended. Choose your next senior step.`
+    ? p.club
+      ? `Your contract with ${p.club} has ended. Your senior history is saved — see the Football app for the club you built.`
+      : 'Your senior history is saved — see the Football app for your recorded pathway.'
     : !p.club
     ? 'Build your skills and look for a club pathway this season.'
     : p.position
       ? `Keep growing as a ${p.position} with ${p.club}.`
       : `Play for ${p.club} so your coach can learn your best position.`;
   const longTerm = endedContract
-    ? `Your contract with ${p.club} has ended. Choose your next senior step.`
+    ? p.club
+      ? `Your senior history at ${p.club} is saved — see the Football app for the recorded club pathway.`
+      : 'Your senior history is saved — see the Football app for your recorded pathway.'
+    : seniorWithoutClub
+      ? 'Build your skills and look for a club pathway this season.'
     : isSenior
     ? `Build your senior career with ${p.club ?? 'your professional club'}.`
     : p.age < 16
@@ -70,6 +77,9 @@ export function deriveHomeNextAction(state) {
     };
   }
 
+  // Injury takes priority over the senior-history nudge: if the senior
+  // player is hurt, route them to physio first; the Football surface is
+  // always available regardless of contract state.
   const injured = Boolean(p.injury && p.injury.quartersOut > 0);
   if (injured && p.ap >= 1 && !p.physioUsedThisQuarter) {
     return {
@@ -85,6 +95,21 @@ export function deriveHomeNextAction(state) {
       reason: p.physioUsedThisQuarter
         ? 'You already visited the physio. Move on to continue recovery next quarter.'
         : 'You need 1 AP for physio. Move on to rest and recover next quarter.',
+    };
+  }
+
+  // No pending offer, no injury: senior career with no active professional
+  // contract means the contract has ended. There is no fabricated senior
+  // decision, league, or offer to point at; route to the existing Football
+  // app, which already shows the honest "Last club — Professional contract
+  // ended" surface.
+  const isSenior = isSeniorCareer(state);
+  const hasActiveContract = hasActiveProfessionalContract(state);
+  if (isSenior && !hasActiveContract && p.club) {
+    return {
+      id: 'football',
+      label: 'See your senior history',
+      reason: `Your contract with ${p.club} ended. The Football app keeps your club and pathway recorded.`,
     };
   }
   if (p.ap >= 2) {

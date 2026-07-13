@@ -133,6 +133,144 @@ test('Home game plan uses a wrapping mobile-safe layout with a prominent full-wi
   assert.match(css, /\.home-next-action\s*\{[^}]*max-width:\s*32rem/s);
 });
 
+test('Home does not promise a fake "Choose your next senior step" after a professional contract ends', () => {
+  const ended = makeState({
+    age: 34,
+    club: 'Redbrook Town FC',
+    position: 'midfielder',
+    pathway: 'Senior team',
+    ap: 6,
+    apMax: 12,
+  });
+  // Senior career stage with no active professional contract = contract has ended.
+  ended.careerState = {
+    playerId: 'person-player',
+    clock: { tick: 96 },
+    peopleById: {
+      'person-player': {
+        id: 'person-player',
+        career: { stage: 'senior', currentContractId: null },
+      },
+    },
+    contractsById: {},
+    negotiationsById: {},
+  };
+
+  const objectives = deriveHomeObjectives(ended);
+  const nextAction = deriveHomeNextAction(ended);
+  const html = renderHomeDashboard(ended);
+
+  // Honest copy: no fake "Choose your next senior step" promise anywhere.
+  assert.doesNotMatch(objectives.season, /Choose your next senior step/);
+  assert.doesNotMatch(objectives.longTerm, /Choose your next senior step/);
+  assert.doesNotMatch(html, /Choose your next senior step/);
+  assert.doesNotMatch(objectives.longTerm, /MVP|teaching hints|engine/i);
+
+  // The senior-history reference is grounded in the existing Football surface,
+  // not a fabricated senior decision.
+  assert.match(objectives.season, /Redbrook Town FC/);
+  assert.match(objectives.longTerm, /senior history|club panel/i);
+  assert.match(html, /Football|Football app|Last club/i);
+
+  // The next-action button targets the real Football surface, not training.
+  assert.equal(nextAction.id, 'football');
+  assert.match(nextAction.reason, /club|senior|history/i);
+});
+
+test('Home routes an injured senior with an ended contract to the physio before the senior-history nudge', () => {
+  // Injury is time-critical and must win over the senior-history nudge so the
+  // player doesn't silently skip recovery. The Football surface is always
+  // available regardless of contract state.
+  const endedInjured = makeState({
+    age: 34,
+    club: 'Redbrook Town FC',
+    position: 'midfielder',
+    pathway: 'Senior team',
+    ap: 6,
+    injury: { label: 'Sprained ankle', quartersOut: 2 },
+  });
+  endedInjured.careerState = {
+    playerId: 'person-player',
+    clock: { tick: 96 },
+    peopleById: {
+      'person-player': {
+        id: 'person-player',
+        career: { stage: 'senior', currentContractId: null },
+      },
+    },
+    contractsById: {},
+    negotiationsById: {},
+  };
+
+  const nextAction = deriveHomeNextAction(endedInjured);
+
+  assert.equal(nextAction.id, 'life');
+  assert.match(nextAction.reason, /physio|recovery/i);
+});
+
+test('Home keeps active-senior and youth copies unchanged when a contract is still active', () => {
+  const active = makeState({
+    age: 22,
+    club: 'Redbrook Town FC',
+    position: 'midfielder',
+    pathway: 'Senior team',
+    ap: 6,
+  });
+  active.careerState = {
+    playerId: 'person-player',
+    clock: { tick: 60 },
+    peopleById: {
+      'person-player': {
+        id: 'person-player',
+        career: {
+          stage: 'senior',
+          currentContractId: 'contract-1',
+        },
+      },
+    },
+    contractsById: {
+      'contract-1': { id: 'contract-1', status: 'active' },
+    },
+    negotiationsById: {},
+  };
+
+  const objectives = deriveHomeObjectives(active);
+  const html = renderHomeDashboard(active);
+
+  // Active senior contract still uses the senior-builder copy, not the ended one.
+  assert.doesNotMatch(objectives.season, /has ended/);
+  assert.doesNotMatch(objectives.longTerm, /has ended/);
+  assert.doesNotMatch(objectives.longTerm, /Choose your next senior step/);
+  assert.match(objectives.longTerm, /Build your senior career/);
+  assert.match(html, /<h3>Senior career<\/h3>/);
+  assert.equal(deriveHomeNextAction(active).id, 'training');
+
+  // Youth path with no senior stage is still routed by age.
+  const youth = makeState({ age: 11 });
+  assert.match(deriveHomeObjectives(youth).longTerm, /age 16/i);
+});
+
+test('Home does not promise a next senior step for a senior state without a club record', () => {
+  const seniorWithoutClub = makeState({ age: 34, ap: 6 });
+  seniorWithoutClub.careerState = {
+    playerId: 'person-player',
+    clock: { tick: 96 },
+    peopleById: {
+      'person-player': {
+        id: 'person-player',
+        career: { stage: 'senior', currentContractId: null },
+      },
+    },
+    contractsById: {},
+    negotiationsById: {},
+  };
+
+  const objectives = deriveHomeObjectives(seniorWithoutClub);
+  assert.match(objectives.longTerm, /club pathway|football journey/i);
+  assert.doesNotMatch(objectives.longTerm, /senior history|Football app/i);
+  assert.equal(deriveHomeNextAction(seniorWithoutClub).id, 'training');
+});
+
 test('Home renders a semantic dismissible and revisitable quarter recap with an honest sparse note', () => {
   const recap = {
     quarter: 3,
