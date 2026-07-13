@@ -41,6 +41,7 @@ import {
   resolveActiveStepForApp,
   markStepDismissed as markGuidedHintDismissed,
 } from './engines/guidedSeason.js';
+import { createChainState } from './data/eventChains.js';
 import { COUNTRIES, COUNTRY_LIST } from './data/countries.js';
 import { EVENTS } from './data/events.js';
 import { getActivity } from './data/activities.js';
@@ -161,6 +162,7 @@ function newGameState({ name, gender, country, startYear }) {
   };
   appState.careerState = ensureCareerState(appState);
   appState.guidedSeason = ensureGuidedSeason(null);
+  appState.chainState = createChainState();
   return appState;
 }
 
@@ -175,6 +177,9 @@ function hydrateRuntimeFields(loaded) {
   loaded.quarterRecap = loaded.quarterRecap ?? null;
   loaded.careerState = ensureCareerState(loaded);
   loaded.guidedSeason = ensureGuidedSeason(loaded.guidedSeason);
+  // chainState may be null on legacy saves; default to a fresh recorder so
+  // the gameplay path can always call applyEvent(.., chainState).
+  loaded.chainState = loaded.chainState ?? createChainState();
   return loaded;
 }
 
@@ -339,7 +344,7 @@ async function rollEvent() {
     }
   }
 
-  const result = applyEvent(state.player, evt, choiceId, state.eventHistory, state.quarterCounter);
+  const result = applyEvent(state.player, evt, choiceId, state.eventHistory, state.quarterCounter, state.chainState);
 
   if (result.effects && result.effects.relationship) {
     const target = resolveRelationshipTarget(result.effects.relationship.who);

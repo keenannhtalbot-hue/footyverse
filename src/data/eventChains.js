@@ -93,6 +93,34 @@ export function createChainState() {
   return { chains };
 }
 
+/**
+ * Find the chain (if any) that currently expects this eventId as its next fire.
+ * Returns the chainId or null. Completed chains are skipped — terminal steps
+ * are sealed and cannot accept another eventId.
+ */
+export function findChainByPendingEventId(chainState, eventId) {
+  if (!chainState || !chainState.chains) return null;
+  for (const [chainId, state] of Object.entries(chainState.chains)) {
+    if (state.completed) continue;
+    const step = getChainStep(chainId, state.currentStepId);
+    if (step.eventId === eventId) return chainId;
+  }
+  return null;
+}
+
+/**
+ * Gameplay entry point: when an event fires, look up which chain expects it,
+ * advance that chain's current step, and return the chainId that was touched
+ * (or null). Safe to call with any eventId — non-chain events are a no-op.
+ */
+export function recordEventForChains(chainState, eventId) {
+  const chainId = findChainByPendingEventId(chainState, eventId);
+  if (!chainId) return null;
+  const step = getChainStep(chainId, chainState.chains[chainId].currentStepId);
+  markChainStepFired(chainState, chainId, step.id);
+  return chainId;
+}
+
 export function markChainStepFired(chainState, chainId, stepId) {
   const chain = CHAINS.find((c) => c.id === chainId);
   if (!chain) throw new Error(`unknown chain: ${chainId}`);

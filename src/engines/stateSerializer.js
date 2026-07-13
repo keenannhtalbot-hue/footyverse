@@ -23,6 +23,11 @@ export function serializeState(state) {
       log: state.eventHistory.log,
     },
     guidedSeason: state.guidedSeason ?? null,
+    // chainState is JSON-safe by construction (plain object of
+    // { currentStepId, completed }). We only emit it when present so legacy
+    // saves do not gain a phantom chainState field — hydration is the
+    // single place that defaults a missing chainState to createChainState().
+    chainState: state.chainState ?? null,
   };
 }
 
@@ -49,5 +54,9 @@ export function deserializeState(saved) {
     // returned object without an extra ensureGuidedSeason pass. main.js still
     // calls ensureGuidedSeason on hydrateRuntimeFields as belt-and-braces.
     guidedSeason: ensureGuidedSeason(saved.guidedSeason),
+    // Legacy saves predating chainState stay null here; main.js
+    // hydrateRuntimeFields defaults this to createChainState() so the
+    // gameplay path can always call applyEvent(.., chainState).
+    chainState: saved.chainState ?? null,
   };
 }

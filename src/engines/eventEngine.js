@@ -2,6 +2,7 @@
 // weighted selection, and effect application. DOM-independent and pure.
 
 import { applyStatChange } from './playerEngine.js';
+import { recordEventForChains } from '../data/eventChains.js';
 
 export function createEventHistory() {
   return {
@@ -34,7 +35,7 @@ export function resolveEventText(evt, player) {
   return evt.text.replace(/\{name\}/g, player.name);
 }
 
-export function applyEvent(player, evt, choiceId, history, currentQuarter) {
+export function applyEvent(player, evt, choiceId, history, currentQuarter, chainState) {
   const branch = evt.choices ? evt.choices.find((c) => c.id === choiceId) ?? evt.choices[0] : evt;
   const effects = branch.effects || {};
 
@@ -54,6 +55,11 @@ export function applyEvent(player, evt, choiceId, history, currentQuarter) {
 
   history.firedIds.add(evt.id);
   history.lastFiredAt.set(evt.id, currentQuarter);
+
+  // Chains are opt-in: callers that maintain chainState (main.js) pass it
+  // through; callers that don't (legacy tests, pure stat-only paths) get the
+  // same return shape as before.
+  if (chainState) recordEventForChains(chainState, evt.id);
 
   const text = resolveEventText(evt, player);
   const entry = {
