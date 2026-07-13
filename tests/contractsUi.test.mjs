@@ -289,6 +289,54 @@ test('reject save failure preserves prior canonical state and reports the failur
   assert.match(result.contractFeedback.message, /storage full/i);
 });
 
+test('accept save failure preserves prior canonical career/player state and reports the failure', () => {
+  const player = makePlayer({ club: 'Riverside Juniors', pathway: 'England youth pathway' });
+  const careerState = createCareerStateForPlayer(player, 44);
+  const priorEvidence = [
+    { kind: 'training', label: 'Pre-season camp', outcome: 'Stamina +2', id: '43-0' },
+  ];
+  const appState = {
+    player,
+    careerState,
+    quarterEvidence: priorEvidence,
+    quarterCounter: 44,
+  };
+  const snapshot = structuredClone(careerState);
+  const snapshotPlayer = structuredClone(player);
+  const snapshotEvidence = structuredClone(priorEvidence);
+  let saves = 0;
+
+  const result = acceptContractInAppState(appState, 'negotiation-contract-1', () => {
+    saves += 1;
+    throw new Error('quota exceeded');
+  });
+
+  // Atomicity: every field the success path mutates must roll back to the pre-accept reference.
+  assert.equal(result.careerState, careerState, 'careerState reference must not change on persist failure');
+  assert.equal(result.player, player, 'player reference must not change on persist failure');
+  assert.equal(result.quarterEvidence, priorEvidence, 'quarterEvidence reference must not change on persist failure');
+  assert.equal(priorEvidence.length, 1, 'input evidence must be untouched (no in-place mutation by adapter)');
+  assert.equal(result.player.club, 'Riverside Juniors', 'player club must remain pre-accept');
+  assert.equal(result.player.pathway, 'England youth pathway', 'player pathway must remain pre-accept');
+  assert.deepEqual(result.careerState, snapshot, 'canonical career state must be byte-identical to pre-accept snapshot');
+  assert.deepEqual(result.player, snapshotPlayer, 'player must remain pre-accept');
+  assert.deepEqual(result.quarterEvidence, snapshotEvidence, 'quarter evidence must remain pre-accept');
+  assert.equal(result.careerState.negotiationsById['negotiation-contract-1'].status, 'open');
+  assert.equal(Object.keys(result.careerState.contractsById).length, 0, 'no contract must be created on persist failure');
+  assert.equal(Object.keys(result.careerState.registrationsById).length, 0, 'no registration must be created on persist failure');
+  assert.equal(result.careerState.peopleById['person-player'].career.stage, 'grassroots', 'career stage must remain pre-accept');
+  assert.equal(result.careerState.peopleById['person-player'].career.currentContractId, null);
+  assert.equal(result.careerState.peopleById['person-player'].career.currentTeamId, null);
+  assert.equal(saves, 1, 'persist must still be invoked exactly once before the failure is surfaced');
+  assert.equal(result.contractFeedback.type, 'error');
+  assert.match(result.contractFeedback.message, /quota exceeded/i);
+  assert.match(
+    renderContractInbox(result.careerState, result.contractFeedback),
+    /data-accept-contract="negotiation-contract-1"/,
+    'open offer must remain actionable so the caller can retry',
+  );
+});
+
 test('open offers expose separate accept, counter, and reject choices while stale offers expose none', () => {
   const careerState = createCareerStateForPlayer(makePlayer(), 44);
   const openHtml = renderContractInbox(careerState);
