@@ -14,12 +14,12 @@ const STEP_ICONS = {
 };
 
 const STEP_NEXT_COPY = {
-  'home.objective': 'after this, the teaching hints will pause',
-  'ap.spend': 'next up: we will explain fatigue and rest',
-  'fatigue': 'next up: a short story beat will appear',
-  'choice.moment': 'next up: the End-quarter button is your friend',
-  'quarter.advance': 'next up: the recap will explain what changed',
-  'recap.read': 'this is the last hint — you have the loop down',
+  'home.objective': 'train once to start building your game',
+  'ap.spend': 'rest after hard training to recover',
+  'fatigue': 'make a choice that shapes your journey',
+  'choice.moment': 'finish the quarter when your activity points are spent',
+  'quarter.advance': 'read your recap to see how your choices mattered',
+  'recap.read': 'keep playing and make the journey your own',
 };
 
 let hintCounter = 0;
@@ -36,7 +36,7 @@ export function renderGuidedHint({ step, onDismiss }) {
   const hintId = nextHintId();
   const titleId = `${hintId}-title`;
   const icon = STEP_ICONS[step.id] ?? '💡';
-  const nextCopy = step.next ? STEP_NEXT_COPY[step.id] ?? 'next up shortly' : null;
+  const nextCopy = step.next ? STEP_NEXT_COPY[step.id] ?? 'keep exploring your football journey' : null;
 
   // Note: the renderer only emits markup. Click handling is wired up by the
   // caller (Home/Football render fns), which already own the app container

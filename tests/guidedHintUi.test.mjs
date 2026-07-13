@@ -51,13 +51,37 @@ test('renderGuidedHint exposes an accessible dismiss button with a stable label'
   assert.match(html, /Dismiss/);
 });
 
-test('renderGuidedHint includes a "next up" affordance when a follow-up step is queued', () => {
+test('renderGuidedHint includes a player-facing next-step affordance when a follow-up step is queued', () => {
   const html = renderGuidedHint({
     step: makeStep({ next: 'ap.spend' }),
     onDismiss: () => {},
   });
   assert.match(html, /Next:/);
-  assert.match(html, /Spend one activity point|after this/i);
+  assert.match(html, /train once/i);
+});
+
+test('renderGuidedHint keeps every guided next-step message player-facing', () => {
+  const journeyCopyByStep = {
+    'home.objective': 'train once to start building your game',
+    'ap.spend': 'rest after hard training to recover',
+    'fatigue': 'make a choice that shapes your journey',
+    'choice.moment': 'finish the quarter when your activity points are spent',
+    'quarter.advance': 'read your recap to see how your choices mattered',
+    'recap.read': 'keep playing and make the journey your own',
+  };
+  const forbiddenMetaLanguage = /teaching hints|explain|next up|button|story beat|pause/i;
+
+  for (const [id, expectedCopy] of Object.entries(journeyCopyByStep)) {
+    const html = renderGuidedHint({
+      step: makeStep({ id, next: 'queued-step' }),
+      onDismiss: () => {},
+    });
+    const renderedNextCopy = html.match(/<p class="guided-hint__next[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? '';
+
+    assert.ok(renderedNextCopy, `${id} should render next-step copy`);
+    assert.ok(renderedNextCopy.includes(expectedCopy), `${id} should describe the player's journey`);
+    assert.doesNotMatch(renderedNextCopy, forbiddenMetaLanguage, `${id} should not expose engine language`);
+  }
 });
 
 test('renderGuidedHint omits the "next up" affordance when this is the last step', () => {
@@ -66,6 +90,17 @@ test('renderGuidedHint omits the "next up" affordance when this is the last step
     onDismiss: () => {},
   });
   assert.doesNotMatch(html, /Next:/);
+});
+
+test('renderGuidedHint keeps unknown queued steps player-facing', () => {
+  const html = renderGuidedHint({
+    step: makeStep({ id: 'unknown.step', next: 'queued-step' }),
+    onDismiss: () => {},
+  });
+  const renderedNextCopy = html.match(/<p class="guided-hint__next[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? '';
+  assert.ok(renderedNextCopy);
+  assert.match(renderedNextCopy, /keep exploring your football journey/i);
+  assert.doesNotMatch(renderedNextCopy, /teaching hints|explain|next up|button|story beat|pause/i);
 });
 
 test('renderGuidedHint renders an explanatory icon role for context-only visuals', () => {
