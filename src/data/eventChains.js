@@ -100,6 +100,12 @@ export function markChainStepFired(chainState, chainId, stepId) {
     chainState.chains[chainId] = { currentStepId: chain.steps[0].id, completed: false };
   }
   const state = chainState.chains[chainId];
+  // Refuse to advance or re-fire on a completed chain — the terminal step is
+  // a single point of no return. This keeps `markChainStepFired` idempotent
+  // in the strong sense: completing a chain means it stays completed, no
+  // matter which stepId the engine happens to pass us again. Absorbing
+  // arbitrary stepIds here is intentional — completed chains are sealed.
+  if (state.completed) return state;
   // Only advance if the fired step is the current step.
   if (state.currentStepId !== stepId) return state;
   const step = getChainStep(chainId, stepId);
@@ -110,3 +116,17 @@ export function markChainStepFired(chainState, chainId, stepId) {
   }
   return state;
 }
+
+// Validate every chain has exactly three steps. Exported so tests can exercise
+// the negative path against a tampered CHAINS array without re-importing the
+// module under a fresh URL.
+export function validateChains(chains = CHAINS) {
+  for (const chain of chains) {
+    if (chain.steps.length !== 3) {
+      throw new Error(`chain ${chain.id} must have exactly 3 steps, has ${chain.steps.length}`);
+    }
+  }
+  return true;
+}
+
+validateChains();
