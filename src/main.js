@@ -41,7 +41,11 @@ import {
   resolveActiveStepForApp,
   markStepDismissed as markGuidedHintDismissed,
 } from './engines/guidedSeason.js';
-import { createChainState } from './data/eventChains.js';
+import { createChainState, CHAINS } from './data/eventChains.js';
+import {
+  announceNewChainCompletions,
+  markChainsAnnounced,
+} from './engines/chainCompletionAnnouncer.js';
 import { COUNTRIES, COUNTRY_LIST } from './data/countries.js';
 import { EVENTS } from './data/events.js';
 import { getActivity } from './data/activities.js';
@@ -79,6 +83,16 @@ const APPS = [
 const PRIMARY_NAV_IDS = ['home', 'football', 'training', 'relationships', 'contracts'];
 
 let state = null;
+
+// Inline lookup of chain titles authored in src/data/eventChains.js. Builds
+// itself from CHAINS once at boot so the toast text is always sourced from
+// the same data the Storylines surface reads — no parallel copy, no drift.
+const CHAIN_TITLES = Object.freeze(
+  CHAINS.reduce((acc, chain) => {
+    acc[chain.id] = chain.title ?? chain.id;
+    return acc;
+  }, {})
+);
 
 function buildRelationships(player, rng) {
   const relationships = {};
@@ -344,6 +358,9 @@ async function rollEvent() {
     }
   }
 
+  const beforeChains = state.chainState
+    ? structuredClone(state.chainState.chains)
+    : null;
   const result = applyEvent(state.player, evt, choiceId, state.eventHistory, state.quarterCounter, state.chainState);
 
   if (result.effects && result.effects.relationship) {
@@ -353,6 +370,8 @@ async function rollEvent() {
       addMemory(target, result.text, 2, state.quarterCounter);
     }
   }
+
+  if (beforeChains) announceCompletedChains(beforeChains);
 
   showToast(result.text);
   state.headline = result.text;
@@ -615,6 +634,25 @@ function buildActions() {
       renderActiveApp();
     },
   };
+}
+
+/**
+ * Announce chains that just flipped to completed, once per chainId.
+ * The hook is idempotent: pre-announced chains remain silent. Reads the
+ * authored chain title from CHAINS via an inline lookup rather than another
+ * import to keep the bundle flat.
+ */
+function announceCompletedChains(beforeChains) {
+  if (!state || !state.chainState) return [];
+  const completed = announceNewChainCompletions(state, { beforeChains });
+  if (completed.length === 0) return [];
+  for (const chainId of completed) {
+    const title = CHAIN_TITLES[chainId];
+    if (title) showToast(`Story complete: ${title}.`);
+  }
+  state.chainState = markChainsAnnounced(state.chainState, completed);
+  autosave();
+  return completed;
 }
 
 function applyActivityEffects(player, activity) {

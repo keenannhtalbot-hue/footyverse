@@ -967,3 +967,230 @@ html[data-contrast='high'] .guided-hint {
   border-color: var(--lime);
   border-width: 2px;
 }
+
+/* ---------- Storylines (chain progress on Profile) ---------- */
+
+.storylines {
+  position: relative;
+  animation: storylines-enter 420ms ease-out both;
+}
+
+@keyframes storylines-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.storylines__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--space-3);
+}
+
+.storylines__title {
+  font-size: 1.05rem;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+.storylines__summary {
+  margin: 0;
+}
+
+.storylines__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.storyline-row {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--navy-700);
+  border: 1px solid var(--charcoal-600);
+  min-width: 0;
+  /* Stagger every row so the list reveals like cards turning over. */
+  animation: storyline-row-enter 380ms ease-out both;
+}
+
+.storyline-row:nth-child(1) { animation-delay: 0ms; }
+.storyline-row:nth-child(2) { animation-delay: 60ms; }
+.storyline-row:nth-child(3) { animation-delay: 120ms; }
+.storyline-row:nth-child(4) { animation-delay: 180ms; }
+.storyline-row:nth-child(5) { animation-delay: 240ms; }
+.storyline-row:nth-child(6) { animation-delay: 300ms; }
+
+@keyframes storyline-row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.storyline-row__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.storyline-row__title-block {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.storyline-row__title {
+  font-size: 0.95rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.storyline-row__description {
+  margin: 0;
+}
+
+.storyline-row__progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.storyline-chip {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--charcoal-600);
+  border: 1px solid var(--charcoal-500);
+  display: inline-block;
+  /* Small fill-in animation when a chip becomes "done". The current chip
+     pulses once to confirm the player's recent action. */
+  transition: transform 220ms ease, background 220ms ease, border-color 220ms ease;
+}
+
+.storyline-chip--current {
+  background: var(--lime);
+  border-color: var(--lime);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--lime) 25%, transparent);
+  animation: storyline-chip-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes storyline-chip-pulse {
+  0%, 100% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--lime) 25%, transparent); }
+  50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--lime) 12%, transparent); }
+}
+
+.storyline-chip--done {
+  background: var(--pitch-green-bright);
+  border-color: var(--pitch-green-bright);
+}
+
+.storyline-row[data-storyline-state='completed'] .storyline-chip {
+  background: var(--pitch-green-bright);
+  border-color: var(--pitch-green-bright);
+}
+
+.storyline-row[data-storyline-state='missing'] {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
+.storyline-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid currentColor;
+  background: transparent;
+}
+
+.storyline-badge--done {
+  color: var(--lime);
+  animation: storyline-badge-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes storyline-badge-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--lime) 12%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--lime) 8%, transparent); }
+}
+
+.storyline-badge--pending {
+  color: var(--off-white-dim);
+}
+
+.storyline-row__status {
+  margin: 0;
+}
+
+/* Reduced motion: kill every Storylines animation, including the staggered
+   row entrance and the chip/badge pulses. The accessibility toggle
+   (html[data-motion='reduced']) AND the OS-level signal both apply. */
+@media (prefers-reduced-motion: reduce) {
+  .storylines,
+  .storyline-row,
+  .storyline-chip--current,
+  .storyline-badge--done {
+    animation: none !important;
+  }
+}
+
+html[data-motion='reduced'] .storylines,
+html[data-motion='reduced'] .storyline-row,
+html[data-motion='reduced'] .storyline-chip--current,
+html[data-motion='reduced'] .storyline-badge--done {
+  animation: none !important;
+}
+
+/* High-contrast: thicker storylines border and stronger chip border so
+   progress is unambiguous. */
+html[data-contrast='high'] .storylines {
+  border-width: 2px;
+}
+
+html[data-contrast='high'] .storyline-row {
+  border-width: 2px;
+}
+
+html[data-contrast='high'] .storyline-chip {
+  border-width: 2px;
+}
+
+/* Compact layout for very narrow phones — stack the heading and badge, drop
+   any horizontal margin that might overflow at 320px. */
+@media (max-width: 380px) {
+  .storyline-row {
+    padding: var(--space-3) var(--space-2);
+  }
+
+  .storyline-row__heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .storyline-badge {
+    align-self: flex-start;
+  }
+
+  .storyline-row__progress {
+    gap: var(--space-1);
+  }
+}

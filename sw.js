@@ -2,7 +2,7 @@
 // responses. Uses a versioned cache name so deploying a new CACHE_VERSION
 // cleanly replaces old caches instead of accumulating stale entries.
 
-const CACHE_VERSION = 'footyverse-v0.5.0-v3';
+const CACHE_VERSION = 'footyverse-v0.5.0-v4';
 
 // APP_SHELL covers every runtime JavaScript module under src/{engines,ui,data}
 // plus the boot-time static assets referenced from index.html and the manifest.
@@ -24,6 +24,7 @@ const APP_SHELL = [
   './src/data/positions.js',
   './src/engines/careerOrchestrator.js',
   './src/engines/careerStateAdapter.js',
+  './src/engines/chainCompletionAnnouncer.js',
   './src/engines/contractEngine.js',
   './src/engines/eventEngine.js',
   './src/engines/footballEngine.js',

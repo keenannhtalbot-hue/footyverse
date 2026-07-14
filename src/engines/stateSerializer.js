@@ -27,6 +27,11 @@ export function serializeState(state) {
     // { currentStepId, completed }). We only emit it when present so legacy
     // saves do not gain a phantom chainState field — hydration is the
     // single place that defaults a missing chainState to createChainState().
+    //
+    // The `announced` sub-field (per-chainId completion map) is created by
+    // createChainState() and carried forward on every save. Legacy saves
+    // predating this field ride through deserialize with `announced` left
+    // as {} — the announcer hook treats missing and empty identically.
     chainState: state.chainState ?? null,
   };
 }
@@ -56,7 +61,10 @@ export function deserializeState(saved) {
     guidedSeason: ensureGuidedSeason(saved.guidedSeason),
     // Legacy saves predating chainState stay null here; main.js
     // hydrateRuntimeFields defaults this to createChainState() so the
-    // gameplay path can always call applyEvent(.., chainState).
+    // gameplay path can always call applyEvent(.., chainState). The
+    // `announced` sub-field is left as-is (or {}) — legacy saves predating
+    // the field are equivalent to a never-announced save, which the
+    // announcer hook reads as the empty map.
     chainState: saved.chainState ?? null,
   };
 }

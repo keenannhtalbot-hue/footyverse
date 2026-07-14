@@ -2,11 +2,19 @@
 // steps; each step references an existing event by id. The first step's
 // nextStepId points to step 2, step 2's to step 3, and step 3's nextStepId
 // is null (terminal). Chains are consumed by the chainState recorder.
+//
+// `title` and `description` are deterministic per-chain text shown in the
+// Storylines surface on Profile — sourced from the same one-line arc blurb
+// that already lives in this file's source comments. They live on the chain
+// object so the Storylines renderer, the announcer helper in main.js, and
+// any future consumer read from one source.
 
 export const CHAINS = [
   // 1. First club trial arc — joining a real club and proving yourself.
   {
     id: 'chain_first_club_trial',
+    title: 'First club trial',
+    description: 'Joining a real club and proving yourself.',
     steps: [
       { id: 'step-1', eventId: 'scouted_local_coach', nextStepId: 'step-2' },
       { id: 'step-2', eventId: 'first_training_session', nextStepId: 'step-3' },
@@ -16,6 +24,8 @@ export const CHAINS = [
   // 2. School transition arc — settling into a new school environment.
   {
     id: 'chain_school_transition',
+    title: 'New school',
+    description: 'Settling into a new school environment.',
     steps: [
       { id: 'step-1', eventId: 'first_day_jitters', nextStepId: 'step-2' },
       { id: 'step-2', eventId: 'new_kid_at_school', nextStepId: 'step-3' },
@@ -25,6 +35,8 @@ export const CHAINS = [
   // 3. Family pet arc — the household gets and eventually mourns a pet.
   {
     id: 'chain_pet_companion',
+    title: 'Family pet',
+    description: 'The household gets and eventually mourns a pet.',
     steps: [
       { id: 'step-1', eventId: 'pet_adopted', nextStepId: 'step-2' },
       { id: 'step-2', eventId: 'family_gets_new_pet', nextStepId: 'step-3' },
@@ -34,6 +46,8 @@ export const CHAINS = [
   // 4. Bike and travel arc — independent outdoor freedom.
   {
     id: 'chain_independent_travel',
+    title: 'Independent travel',
+    description: 'Independent outdoor freedom on two wheels and beyond.',
     steps: [
       { id: 'step-1', eventId: 'learns_to_ride_bike', nextStepId: 'step-2' },
       { id: 'step-2', eventId: 'walks_to_friends_house_alone', nextStepId: 'step-3' },
@@ -43,6 +57,8 @@ export const CHAINS = [
   // 5. Football rising arc — first match, first set-piece goal, first hat-trick.
   {
     id: 'chain_rising_talent',
+    title: 'Football rising',
+    description: 'First match, first set-piece goal, first hat-trick.',
     steps: [
       { id: 'step-1', eventId: 'first_match_assist', nextStepId: 'step-2' },
       { id: 'step-2', eventId: 'first_set_piece_goal', nextStepId: 'step-3' },
@@ -52,6 +68,8 @@ export const CHAINS = [
   // 6. Work and responsibility arc — small jobs leading to bigger trust.
   {
     id: 'chain_responsibility',
+    title: 'Taking responsibility',
+    description: 'Small jobs leading to bigger trust.',
     steps: [
       { id: 'step-1', eventId: 'first_chore_chart', nextStepId: 'step-2' },
       { id: 'step-2', eventId: 'first_time_babysitting', nextStepId: 'step-3' },
@@ -84,13 +102,18 @@ export function advanceChain(chainId, stepId) {
  * Build a deterministic chainState recorder. The recorder tracks which step
  * each chain is currently on. It does not gate eligibility — the chainState
  * object is pure data and chain consumers decide how to use it.
+ *
+ * `announced` is a per-chainId map (boolean) that records which chain
+ * completions have already been toasted to the player. The announcer hook
+ * (src/engines/chainCompletionAnnouncer.js) reads this map and never fires
+ * twice for the same chain across rerenders, reloads, or replayed events.
  */
 export function createChainState() {
   const chains = {};
   for (const chain of CHAINS) {
     chains[chain.id] = { currentStepId: chain.steps[0].id, completed: false };
   }
-  return { chains };
+  return { chains, announced: {} };
 }
 
 /**
