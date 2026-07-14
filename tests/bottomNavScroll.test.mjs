@@ -167,3 +167,55 @@ test('DOM regression: every bottom-nav button must keep aria-current and a visib
   assert.match(mainJs, /nav-btn__icon[^>]*aria-hidden="true"/);
   assert.match(mainJs, /aria-current="\$\{state\.activeApp === app\.id \? 'page' : 'false'\}/);
 });
+
+// --- iOS gesture-zone and scroll-chaining protections ---
+//
+// The structural fix (nav in normal flow inside 100dvh flex column) prevents
+// the bar from moving on scroll. These three rules address the residual iOS
+// Safari behaviors that re-create the original symptom at the gesture layer:
+//   1. tap-action: manipulation on .nav-btn kills the 300ms double-tap-zoom
+//      delay on iOS Safari (which only honors `auto` and `manipulation` for
+//      touch-action — other values are ignored).
+//   2. overscroll-behavior: contain on .app-content stops scroll momentum
+//      from bleeding past the content boundary (rubber-banding), which
+//      otherwise drags the bottom-nav with it for a few pixels. WebKit
+//      shipped this property unprefixed in Safari 16; there is no
+//      `-webkit-overscroll-behavior` to set.
+//   3. will-change: transform on .app-launcher-nav promotes the bar to its
+//      own compositor layer as a last-resort stability hint for low-tier
+//      iOS Safari builds.
+
+test('CSS regression: nav buttons must opt out of scroll gestures (touch-action: manipulation)', () => {
+  const css = loadCss();
+  const btnBlocks = cssBlocks(css, /\.nav-btn\s*\{[^}]*\}/g, '.nav-btn');
+  assert.ok(
+    btnBlocks.some((block) => /touch-action\s*:\s*manipulation/.test(block)),
+    '.nav-btn must use touch-action: manipulation so iOS Safari stops classifying taps near the home-indicator zone as scroll-start (this is the second layer of the iOS bar-moves bug — the structural fix is not enough on its own)'
+  );
+});
+
+test('CSS regression: scrolling content must not chain past its boundary (overscroll-behavior: contain)', () => {
+  const css = loadCss();
+  const contentBlocks = cssBlocks(css, /\.app-content\s*\{[^}]*\}/g, '.app-content');
+  assert.ok(
+    contentBlocks.some((block) => /overscroll-behavior\s*:\s*contain/.test(block)),
+    '.app-content must use overscroll-behavior: contain so momentum does not chain into the bottom-bar gesture zone on iOS Safari'
+  );
+  // There is no -webkit-overscroll-behavior — WebKit shipped the property
+  // unprefixed in Safari 16 (iOS 16, 2022). Guard against anyone re-adding
+  // the fictional prefix in the future.
+  assert.doesNotMatch(
+    css,
+    /-webkit-overscroll-behavior/,
+    '-webkit-overscroll-behavior is a fictional property — WebKit shipped overscroll-behavior unprefixed. Reject any future re-addition.'
+  );
+});
+
+test('CSS regression: bottom nav must hint the compositor (will-change: transform) as last-resort iOS stability layer', () => {
+  const css = loadCss();
+  const navBlocks = cssBlocks(css, /\.app-launcher-nav\s*\{[^}]*\}/g, '.app-launcher-nav');
+  assert.ok(
+    navBlocks.some((block) => /will-change\s*:\s*transform/.test(block)),
+    '.app-launcher-nav must use will-change: transform so iOS Safari promotes the bar to its own compositor layer — last-resort protection against the bar still twitching on scroll on low-tier devices'
+  );
+});

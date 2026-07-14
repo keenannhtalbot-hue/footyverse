@@ -244,6 +244,13 @@ p {
   padding: var(--space-4);
   padding-left: max(var(--space-4), env(safe-area-inset-left));
   padding-right: max(var(--space-4), env(safe-area-inset-right));
+  /* iOS Safari scroll-chaining protection: without this, momentum from the
+     scrolling content bleeds past the content boundary (rubber-banding) and
+     drags the bottom-nav with it for a few pixels, which both moves the bar
+     visually AND makes taps inside it briefly un-pressable. WebKit shipped
+     overscroll-behavior unprefixed in Safari 16 (iOS 16, 2022); there is no
+     -webkit- variant — do not add one. */
+  overscroll-behavior: contain;
 }
 
 .app-launcher-nav {
@@ -253,6 +260,12 @@ p {
   background: var(--navy-900);
   border-top: 1px solid var(--charcoal-600);
   padding: var(--space-1) max(var(--space-1), env(safe-area-inset-left)) max(var(--space-1), env(safe-area-inset-bottom));
+  /* Last-resort iOS Safari stability layer: promote the bottom nav to its own
+     compositor layer so low-tier iOS Safari builds stop twitching the bar when
+     content scrolls past. The structural fix (nav in normal flow inside a
+     100dvh flex column) does most of the work; this just guarantees the
+     compositor treats the bar as a separate layer. */
+  will-change: transform;
 }
 
 .app-launcher-nav__more {
@@ -274,6 +287,12 @@ p {
   font-size: 0.62rem;
   font-weight: 600;
   line-height: 1.1;
+  /* iOS Safari tap-latency protection: iOS Safari only honors `auto` and
+     `manipulation` for touch-action (no other values). `manipulation`
+     suppresses the 300ms double-tap-zoom delay so taps register on first
+     contact near the home-indicator zone. Do NOT use `none` here — iOS
+     Safari ignores it. */
+  touch-action: manipulation;
 }
 
 .nav-btn__icon {
