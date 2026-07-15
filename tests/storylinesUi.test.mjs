@@ -89,6 +89,28 @@ test('Storylines renders deterministic step indicators for not-started chains (z
   }
 });
 
+test('Storylines missing-state rows show no fabricated current/done progress or in-progress badge', () => {
+  const html = renderToString(makeProfileState(null));
+  const cardMatch = html.match(/<section[^>]+class="[^\"]*storylines[^\"]*"[\s\S]*?<\/section>/);
+  assert.ok(cardMatch, 'Profile must expose a Storylines section for legacy saves');
+
+  const blocks = [...cardMatch[0].matchAll(/data-storyline-id="([^\"]+)"[\s\S]*?(?=data-storyline-id=|<\/section>)/g)].map((m) => m[0]);
+  assert.equal(blocks.length, CHAINS.length);
+  for (const block of blocks) {
+    assert.doesNotMatch(block, />In progress<\/span>/, 'missing progress must not claim a chain is in progress');
+    assert.doesNotMatch(block, /data-storyline-step-state="(?:current|done)"/, 'missing progress must not invent current or completed steps');
+    assert.match(block, /data-storyline-step-state="upcoming"/, 'missing progress must use an explicit not-started chip state');
+    assert.match(block, />Not started<\/span>/, 'missing progress must expose an explicit not-started badge');
+  }
+});
+
+test('Storylines also treats an empty chainState container as no progress', () => {
+  const html = renderToString(makeProfileState({ chains: {} }));
+  assert.doesNotMatch(html, />In progress<\/span>/);
+  assert.doesNotMatch(html, /data-storyline-step-state="(?:current|done)"/);
+  assert.match(html, /class="text-small text-dim storylines__summary">No chain progress recorded/i);
+});
+
 test('Storylines surfaces a chain at mid-flight (current step chip marked, no completion)', () => {
   const chainState = createChainState();
   const chain = CHAINS.find((c) => c.id === 'chain_rising_talent');
@@ -157,17 +179,23 @@ test('Storylines rows are keyboard-focusable and screen-reader labelled', () => 
   assert.match(cardHtml, /role="status"[^>]+aria-live="polite"/);
 });
 
-test('Storylines row chips expose deterministic step labels for assistive tech', () => {
+test('Storylines row chips expose deterministic step labels without an aria-hidden ancestor', () => {
   const html = renderToString(makeProfileState());
-  const cardMatch = html.match(/<section[^>]+class="[^"]*storylines[^"]*"[\s\S]*?<\/section>/);
+  const cardMatch = html.match(/<section[^>]+class="[^\"]*storylines[^\"]*"[\s\S]*?<\/section>/);
   const cardHtml = cardMatch[0];
 
   // Each step chip must carry an aria-label naming the chain and the step
-  // number so screen readers can read the three-step progress explicitly.
-  const chipLabels = [...cardHtml.matchAll(/data-storyline-step="(\d)"[^>]*aria-label="([^"]+)"/g)];
-  assert.equal(chipLabels.length, CHAINS.length * 3);
-  for (const [, idx, label] of chipLabels) {
-    assert.match(label, /step\s+\d/i, 'step chips must be labelled with their step number');
+  // number, and the progress rail must not hide those labels from assistive
+  // technology.
+  const progressRailMatches = [...cardHtml.matchAll(/<div class="storyline-row__progress"([^>]*)>([\s\S]*?)<\/div>/g)];
+  assert.equal(progressRailMatches.length, CHAINS.length);
+  for (const [, attrs, railHtml] of progressRailMatches) {
+    assert.doesNotMatch(attrs, /aria-hidden="true"/, 'step labels must not be hidden from assistive technology');
+    const chipLabels = [...railHtml.matchAll(/data-storyline-step="(\d)"[^>]*aria-label="([^"]+)"/g)];
+    assert.equal(chipLabels.length, 3);
+    for (const [, , label] of chipLabels) {
+      assert.match(label, /step\s+\d/i, 'step chips must be labelled with their step number');
+    }
   }
 });
 
