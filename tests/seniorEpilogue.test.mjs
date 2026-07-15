@@ -541,6 +541,131 @@ test('shouldMountSeniorEpilogue decision helper agrees with renderFootball eligi
   assert.equal(shouldMountSeniorEpilogue(youth), false);
 });
 
+// Regression: pending offer (open negotiation) plus an expired contract
+// must NOT mount the epilogue — the player is between contracts, not
+// in an "ended career" state. This is a guard against future schema
+// expansion where 'pending' is a real contract status (or a
+// pendingContractId pointer exists on career), and an open offer is a
+// real "decision still pending" signal.
+test('isSeniorEpilogueEligible returns false when an open offer is pending alongside an expired contract', () => {
+  const state = makeState({
+    careerState: {
+      ...makeCareerState(), // has contract-1 status=expired
+      negotiationsById: {
+        ...makeCareerState().negotiationsById,
+        // Open offer for the player — a real decision pending.
+        'negotiation-pending': {
+          id: 'negotiation-pending',
+          kind: 'professional-offer',
+          personId: 'person-player',
+          toClubId: 'club-redbrook',
+          status: 'open',
+          createdTick: 96,
+          expiresTick: 104,
+        },
+      },
+    },
+  });
+  // Even though the player has a real expired contract in their
+  // history, there is also an open offer on the table. The career is
+  // "between contracts", not "ended". Epilogue must not mount.
+  assert.equal(isSeniorEpilogueEligible(state), false);
+  assert.equal(shouldMountSeniorEpilogue(state), false);
+});
+
+// Regression: when the schema later supports a 'pending' contract
+// status (e.g. accepted-but-not-started), the epilogue must not mount
+// while that pointer exists on career, even if older contracts are
+// expired. Mirrors the active/currentContractId guard.
+test('isSeniorEpilogueEligible returns false when career has a pending contract pointer alongside expired contracts', () => {
+  const state = makeState({
+    careerState: makeCareerState({
+      // Add a pending contract alongside the expired one.
+      contractsById: {
+        ...makeCareerState().contractsById,
+        'contract-pending': {
+          id: 'contract-pending',
+          personId: 'person-player',
+          clubId: 'club-redbrook',
+          status: 'pending',
+          kind: 'professional',
+          startTick: 100,
+          endTick: 200,
+        },
+      },
+      // The pending contract is the player's current pointer (analogous
+      // to currentContractId, which here we mirror on a dedicated
+      // pendingContractId field for the future-proof schema).
+      peopleById: {
+        'person-player': {
+          id: 'person-player',
+          kind: 'player',
+          career: {
+            stage: 'senior',
+            currentContractId: null,
+            pendingContractId: 'contract-pending',
+          },
+        },
+      },
+    }),
+  });
+  assert.equal(isSeniorEpilogueEligible(state), false);
+  assert.equal(shouldMountSeniorEpilogue(state), false);
+});
+
+// Regression: a player whose ONLY history is a single TRANSFER_ACCEPTED
+// ledger event with a missing/non-finite tick must render the empty
+// state — sparse must agree with what the renderer would actually show.
+// Previously, transfers.length > 0 forced sparse=false, but the renderer
+// filtered tick=null events out of notableMoments AND rendered no
+// contracts/clubs/offers, so the user would see "no contracts
+// recorded" with a misleading non-sparse header.
+test('buildSeniorEpilogue sparse state agrees with rendered body when ledger tick is missing', () => {
+  const base = {
+    ...makeCareerState(),
+    contractsById: {}, // no contract history
+    negotiationsById: {}, // no offer history
+    registrationsById: {},
+    ledger: [
+      {
+        id: 'event-tickless',
+        type: 'TRANSFER_ACCEPTED',
+        // tick intentionally omitted / undefined to simulate a
+        // sparse/missing entry from the orchestrator.
+        refs: { personId: 'person-player', fromClubId: 'club-redbrook', toClubId: 'club-northshore' },
+        payload: { transferFeeMinor: 1000000 },
+      },
+    ],
+  };
+  base.clubsById = {
+    ...base.clubsById,
+    'club-northshore': { id: 'club-northshore', name: 'Northshore United' },
+  };
+  const state = makeState({ careerState: base });
+  const summary = buildSeniorEpilogue(state);
+
+  // The contract list, offers list, and the visible notable-moments
+  // list all filter tick-null events out. The user-visible summary
+  // shows zero contracts, zero offers, zero notable moments.
+  assert.equal(summary.contracts.length, 0);
+  assert.equal(summary.offers.length, 0);
+  assert.equal(summary.notableMoments.length, 0);
+
+  // sparse must agree with the rendered body — otherwise the renderer
+  // shows the empty path (header + honest copy) but the data layer
+  // claims non-empty, which is misleading downstream consumers.
+  assert.equal(summary.sparse, true);
+
+  const html = renderSeniorEpilogueCard(state);
+  // Empty-state copy is present.
+  assert.match(html, /Senior journey so far/);
+  assert.match(html, /no recorded senior history|has not been recorded/i);
+  // No <li> entries (the rendered body is the honest empty path).
+  assert.doesNotMatch(html, /<li>/);
+  // No fabricated award/league tokens.
+  assert.doesNotMatch(html, /MVP|trophy|award|champion|golden boot/i);
+});
+
 test('senior epilogue uses a dedicated CSS class so it can be styled separately', () => {
   const css = readFileSync(new URL('../styles/main.css', import.meta.url), 'utf8');
   assert.match(css, /\.senior-epilogue\s*\{/);

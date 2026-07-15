@@ -1285,8 +1285,8 @@ html[data-contrast='high'] .storyline-chip {
 }
 
 .senior-epilogue__contracts {
-  /* Use a subtle numeric counter so each contract reads as a step. */
-  counter-reset: senior-contract;
+  /* Browser default decimal numbering on <ol> handles the visual
+     counter — no custom counter-reset / counter-increment needed. */
   padding-left: 1.25rem;
 }
 

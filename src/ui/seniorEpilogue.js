@@ -65,18 +65,12 @@ function offerStatusLabel(status) {
   }
 }
 
-function formatYearTickToYear(_careerState, _tick) {
-  // Placeholder: any per-engine tick-to-year mapping would have to be
-  // verified against a constant the orchestrator exposes; rather than
-  // guess, we deliberately return null. Reserved for a future revision
-  // when the engine tick rate is published as part of careerState.
-  return null;
-}
-
 // Pure: decide whether the football surface should mount the panel.
 // Mirrors the eligibility rules documented on the audit's Card A:
 //   stage === 'senior'
-//   AND no active professional contract (career is "post-contract")
+//   AND no active/pending professional contract (career is "post-contract")
+//   AND no open offer for the player (the player is between contracts,
+//   not in an "ended career" state — the career is still ongoing)
 //   AND at least one truthful history record exists for the player
 //   (a recorded contract, a resolved offer, or a resolved
 //   transfer/loan ledger event) so the panel has something honest
@@ -87,9 +81,25 @@ export function isSeniorEpilogueEligible(state) {
   if (!player || !player.career || player.career.stage !== SENIOR_STAGE) return false;
   const careerState = state.careerState;
   const playerId = player.playerId;
+  const playerCareer = player.career;
   const hasActiveContract = Object.values(careerState?.contractsById ?? {})
     .some((contract) => contract?.personId === playerId && isPlayerContractActive(state, playerId, contract));
   if (hasActiveContract) return false;
+  // Block pending contract pointer: an accepted-but-not-started contract
+  // is non-terminal — the career is not "ended", it is "imminent". This
+  // mirrors the active/currentContractId guard for the future schema
+  // where 'pending' is a real contract status.
+  if (typeof playerCareer.pendingContractId === 'string'
+    && careerState?.contractsById?.[playerCareer.pendingContractId]) {
+    return false;
+  }
+  // Block while an open offer for the player is awaiting decision: the
+  // career is mid-decision, not ended. Resolved offers (accepted/rejected/
+  // countered) do NOT block — they are history.
+  const hasOpenOffer = Object.values(careerState?.negotiationsById ?? {})
+    .some((negotiation) => negotiation?.personId === playerId
+      && negotiation.status === 'open');
+  if (hasOpenOffer) return false;
   // A contract record (signed, expired, terminated) is the strongest
   // signal that there is real history to show. We deliberately do not
   // count open negotiations — open offers live in the Contracts app.
@@ -230,10 +240,17 @@ export function buildSeniorEpilogue(state) {
     }),
   ].filter((m) => m.tick !== null).sort((a, b) => (a.tick ?? 0) - (b.tick ?? 0));
 
+  // `sparse` is the user-visible "is there anything to show?" gate. It
+  // must agree with what the renderer actually paints. The renderer
+  // filters out ledger events with non-finite tick values from
+  // notableMoments, so a TRANSFER_ACCEPTED with `tick: undefined` is
+  // present in `transfers` but invisible to the user. Use
+  // `notableMoments.length` (post-filter) as the truth source for the
+  // user-visible state.
   summary.sparse = summary.contracts.length === 0
     && summary.offers.length === 0
-    && summary.transfers.length === 0
-    && summary.loans.length === 0;
+    && summary.clubs.length === 0
+    && summary.notableMoments.length === 0;
 
   return summary;
 }
