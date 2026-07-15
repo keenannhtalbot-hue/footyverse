@@ -33,8 +33,10 @@
 //          remaining ≤10% may be "open_offer_pending")
 //        - meanTicksPerCareer >= 50 (every career makes material progress)
 //        - meanTicksPerCareer <= 600 (cap = 800 ticks, plus a stride)
-//   6. Performance budget: 250 careers with a small cap (≤200 ticks)
-//      must complete in <5 seconds so the harness stays CI-friendly.
+//   6. Performance budget: 250 careers with the canonical cap
+//      (800 ticks) must complete in <10 seconds so the harness stays
+//      CI-friendly. (Bumped from 5s after honest-exhaustion was
+//      wired in — see the budget note on test #6 for the rationale.)
 //
 // Default-skip behavior: `npm test` runs node --test tests/*.test.mjs;
 // that glob does NOT match tests/simulations/*.test.mjs, so this
@@ -187,7 +189,17 @@ test('batch career harness writes evidence fixture when fixturePath is provided'
   await fs.rm(tmpDir, { recursive: true, force: true });
 });
 
-test('batch career harness runs a 250-career batch in under 5 seconds', () => {
+test('batch career harness runs a 250-career batch in under 10 seconds (honest-exhaustion budget)', () => {
+  // Honest-exhaustion cost (Apex review Blocker 1 fix): each career
+  // may mint up to MAX_OFFER_ATTEMPTS_PER_CAREER (8) offers before
+  // giving up, vs ~1 in the previous dishonest version. That's a
+  // ~2-3x increase in per-career work. The previous 5s budget was
+  // tight enough that the test was flaky on first runs (observed
+  // 5309ms on a cold cache; passes on warm cache). 10s gives honest
+  // headroom while still catching real perf regressions like an
+  // accidentally O(n^2) loop. The 1000-career qa:batch gate is the
+  // wall-clock budget that matters for CI; this test only asserts
+  // the harness doesn't regress catastrophically.
   const t0 = Date.now();
   const summary = runBatchCareerSimulation({
     batchSize: 250,
@@ -195,8 +207,8 @@ test('batch career harness runs a 250-career batch in under 5 seconds', () => {
     seed: 'qa-batch-perf-seed',
   });
   const elapsed = Date.now() - t0;
-  assert.ok(elapsed < 5000,
-    `250-career batch must complete in under 5 seconds (took ${elapsed}ms)`);
+  assert.ok(elapsed < 10000,
+    `250-career batch must complete in under 10 seconds (took ${elapsed}ms) — honest-exhaustion has a known 2-3x per-career cost`);
   assert.equal(summary.completed, 250,
     'every career in the perf batch must terminate');
 });
