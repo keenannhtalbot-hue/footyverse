@@ -199,6 +199,85 @@ test('Storylines row chips expose deterministic step labels without an aria-hidd
   }
 });
 
+test('Storylines treats a present-but-corrupt per-chain record (unknown currentStepId) as not-started', () => {
+  // Regression: a chainState with `chains[chainId]` present but its
+  // `currentStepId` pointing at an id that is NOT one of the authored steps
+  // (legacy migration, save corruption, etc.) must render the same way as a
+  // missing record — never fabricate a current step, never mark any chip as
+  // done, never claim "In progress". The summary must still be the honest
+  // no-progress copy because no chain is verifiably in flight.
+  const chain = CHAINS.find((c) => c.id === 'chain_rising_talent');
+  const chainState = createChainState();
+  // Plant a record that exists (so we exercise the present-but-corrupt path,
+  // not the missing-record path) but whose currentStepId is not in the chain.
+  chainState.chains[chain.id] = {
+    currentStepId: 'step-99-corrupt',
+    completed: false,
+  };
+
+  const html = renderToString(makeProfileState(chainState));
+  const block = extractChainBlock(html, chain.id);
+  assert.ok(block, 'Profile must render the corrupt-record chain block');
+
+  // No fabricated progress on the corrupt chain.
+  assert.doesNotMatch(
+    block,
+    /data-storyline-step-state="(?:current|done)"/,
+    'corrupt record must not invent current or completed chips'
+  );
+  assert.doesNotMatch(
+    block,
+    />In progress<\/span>/,
+    'corrupt record must not show an In progress badge'
+  );
+  assert.match(
+    block,
+    />Not started<\/span>/,
+    'corrupt record must show the explicit Not started badge'
+  );
+  assert.match(
+    block,
+    /data-storyline-state="missing"/,
+    'corrupt record must render the row-level state as missing'
+  );
+  assert.match(
+    block,
+    /No chain progress recorded for this save yet\./,
+    'corrupt record must surface the honest no-progress blurb'
+  );
+
+  // Every chip on the corrupt chain must be upcoming.
+  const chipStates = [
+    ...block.matchAll(/data-storyline-step="(\d)"[^>]*data-storyline-step-state="([^"]+)"/g),
+  ];
+  assert.equal(chipStates.length, chain.steps.length, 'all authored chips must render');
+  for (const [, , chipState] of chipStates) {
+    assert.equal(chipState, 'upcoming', 'corrupt record chips must all be upcoming');
+  }
+
+  // The summary copy must reflect no verifiable progress overall.
+  const cardMatch = html.match(/<section[^>]+class="[^"]*storylines[^"]*"[\s\S]*?<\/section>/);
+  assert.match(
+    cardMatch[0],
+    /No chain progress recorded for this save yet/,
+    'summary must use the honest no-progress copy when only corrupt records are present'
+  );
+
+  // The other five chains (legitimately at step-1 / not-started) must still
+  // render their deterministic first-chip-as-current / others-as-upcoming
+  // pattern. The corrupt chain must not poison the rest of the surface.
+  for (const other of CHAINS) {
+    if (other.id === chain.id) continue;
+    const otherBlock = extractChainBlock(html, other.id);
+    assert.ok(otherBlock, `unrelated chain ${other.id} must still render`);
+    assert.match(
+      otherBlock,
+      /data-storyline-step="1"[^>]*data-storyline-step-state="current"/,
+      `unrelated chain ${other.id} must keep its deterministic step-1 current chip`
+    );
+  }
+});
+
 function extractChainBlock(html, chainId) {
   const blockRegex = new RegExp(
     `data-storyline-id="${chainId.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}"[\\s\\S]*?(?=data-storyline-id=|</section>)`,
