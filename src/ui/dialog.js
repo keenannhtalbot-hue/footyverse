@@ -14,12 +14,13 @@ function getRoot() {
  * Opens a modal dialog and resolves with the id of the button pressed,
  * or null if dismissed (Esc / backdrop / close button).
  *
- * @param {{title:string, bodyHtml:string, actions:{id:string,label:string,variant?:string}[], labelledBy?:string}} opts
+ * @param {{title:string, bodyHtml:string, actions:{id:string,label:string,variant?:string}[], id?:string}} opts
  */
-export function openDialog({ title, bodyHtml, actions }) {
+export function openDialog({ title, bodyHtml, actions, id }) {
   return new Promise((resolve) => {
     const root = getRoot();
     const dlg = document.createElement('dialog');
+    if (id) dlg.id = id;
     dlg.setAttribute('aria-labelledby', 'dlg-title');
 
     const actionsHtml = actions

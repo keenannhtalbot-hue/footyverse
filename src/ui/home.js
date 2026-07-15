@@ -135,9 +135,55 @@ export function deriveHomeNextAction(state) {
   };
 }
 
+// The dialog id used by both the trigger (aria-controls) and the main.js
+// dialog renderer. Kept as a constant so the test can pin it.
+export const QUARTER_REVIEW_DIALOG_ID = 'quarter-review-dialog';
+
+export function hasQuarterRecap(state) {
+  return Boolean(state && state.quarterRecap && Array.isArray(state.quarterRecap.highlights));
+}
+
+export function renderQuarterReviewTrigger(recap) {
+  if (!recap || !Array.isArray(recap.highlights)) return '';
+  return `<button type="button" class="btn btn--ghost btn--block home-review-quarter" data-home-review-quarter="show" aria-haspopup="dialog" aria-controls="${QUARTER_REVIEW_DIALOG_ID}">Review this quarter</button>`;
+}
+
+// Pure: returns a fresh array of highlight strings, never the caller's.
+// Empty / missing arrays normalize to [] so renderers don't need to
+// defend against undefined.
+export function buildQuarterReviewHighlights(recap) {
+  if (!recap || !Array.isArray(recap.highlights)) return [];
+  return recap.highlights.slice();
+}
+
+// Pure renderer used by main.js to drive the existing native <dialog>
+// surface. Returns { bodyHtml, actions } where actions is fed to the
+// shared openDialog helper. The function never mutates the supplied
+// recap and never invents quarter labels — it only renders what the
+// engine recorded.
+export function renderQuarterReviewDialog(recap) {
+  const safeRecap = recap && typeof recap === 'object' ? recap : { highlights: [] };
+  const highlights = buildQuarterReviewHighlights(safeRecap);
+  const itemsHtml = highlights.length
+    ? `<ol class="quarter-review__list">${highlights.map((text) => `<li>${escapeHtml(text)}</li>`).join('')}</ol>`
+    : '<p class="text-small text-dim">No recorded changes this quarter — the game has nothing to show yet.</p>';
+  const sparseNote = safeRecap.sparse === true
+    ? '<p class="text-small text-dim">Only the changes the game could verify are shown — nothing has been made up.</p>'
+    : '';
+  const quarterLabel = Number.isFinite(safeRecap.quarter)
+    ? `<p class="quarter-review__heading">Quarter ${safeRecap.quarter}</p>`
+    : '';
+  const bodyHtml = `${quarterLabel}${itemsHtml}${sparseNote}`;
+  return {
+    bodyHtml,
+    actions: [{ id: 'close', label: 'Close', variant: 'ghost' }],
+  };
+}
+
 export function renderHomeDashboard(state) {
   const objectives = deriveHomeObjectives(state);
   const nextAction = deriveHomeNextAction(state);
+  const reviewTrigger = renderQuarterReviewTrigger(state.quarterRecap);
   return `<section class="card card--accent full-span home-plan" aria-labelledby="home-plan-title">
     <h2 id="home-plan-title">Your game plan</h2>
     <div class="home-objectives">
@@ -149,6 +195,7 @@ export function renderHomeDashboard(state) {
       <p class="section-title">Next action</p>
       <button type="button" class="btn btn--primary btn--block" data-home-action="${nextAction.id}" aria-describedby="home-action-reason">${escapeHtml(nextAction.label)}</button>
       <p id="home-action-reason" class="text-small text-dim" role="status" aria-live="polite">${escapeHtml(nextAction.reason)}</p>
+      ${reviewTrigger}
     </div>
   </section>`;
 }
@@ -217,6 +264,14 @@ export function render(container, { state, actions }) {
   if (state.quarterRecap) {
     container.querySelector('[data-quarter-recap]')?.addEventListener('click', (event) => {
       actions.setQuarterRecapDismissed(event.currentTarget.getAttribute('data-quarter-recap') === 'dismiss');
+    });
+  }
+  const reviewTrigger = state.quarterRecap
+    ? container.querySelector?.('[data-home-review-quarter]')
+    : null;
+  if (reviewTrigger && typeof reviewTrigger.addEventListener === 'function') {
+    reviewTrigger.addEventListener('click', () => {
+      actions.openQuarterReviewDialog?.();
     });
   }
   const guidedDismiss = container.querySelector?.('[data-guided-dismiss]');

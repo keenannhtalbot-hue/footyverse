@@ -55,6 +55,7 @@ import { openDialog, escapeHtml } from './ui/dialog.js';
 import { showToast } from './ui/toast.js';
 
 import * as HomeApp from './ui/home.js';
+import { QUARTER_REVIEW_DIALOG_ID, renderQuarterReviewDialog } from './ui/home.js';
 import * as ProfileApp from './ui/profile.js';
 import * as FootballApp from './ui/football.js';
 import * as TrainingApp from './ui/training.js';
@@ -580,6 +581,19 @@ function buildActions() {
       autosave();
       renderActiveApp();
       document.querySelector(dismissed ? '[data-quarter-recap="show"]' : '#quarter-recap-title')?.focus();
+    },
+    async openQuarterReviewDialog() {
+      if (!state.quarterRecap) return;
+      const { bodyHtml, actions } = renderQuarterReviewDialog(state.quarterRecap);
+      await openDialog({
+        id: QUARTER_REVIEW_DIALOG_ID,
+        title: 'Your quarter so far',
+        bodyHtml,
+        actions,
+      });
+      // After the dialog closes, return focus to the Home trigger so a
+      // keyboard or screen-reader user doesn't lose their place.
+      document.querySelector('[data-home-review-quarter="show"]')?.focus();
     },
     getRecentNews: (limit) => getRecentNews(state.world, limit),
     async saveGame() {
