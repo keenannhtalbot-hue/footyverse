@@ -6,6 +6,7 @@ import { escapeHtml, card, emptyState } from './helpers.js';
 import { POSITIONS } from '../data/positions.js';
 import { renderGuidedHint } from './guidedHint.js';
 import { resolveActiveStepForApp } from '../engines/guidedSeason.js';
+import { renderSeniorEpilogueCard, shouldMountSeniorEpilogue } from './seniorEpilogue.js';
 
 function renderGuidedHintForApp(state, actions, appId) {
   const step = resolveActiveStepForApp(state, appId);
@@ -58,6 +59,7 @@ export function render(container, { state, actions }) {
       `<p class="text-dim">Matches observed by coaching staff: <strong>${p.matchObservations}</strong>.</p>
        <p class="text-dim text-small">Interactive match moments — shoot, pass, dribble, or defend — appear automatically when you end a quarter while on a club.</p>`
     )}
+    ${shouldMountSeniorEpilogue(state) ? renderSeniorEpilogueCard(state) : ''}
   `;
 
   const dismissBtn = container.querySelector?.('[data-guided-dismiss]');

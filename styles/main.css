@@ -1215,3 +1215,140 @@ html[data-contrast='high'] .storyline-chip {
     gap: var(--space-1);
   }
 }
+
+/* Senior epilogue: honest post-contract recap panel on the Football app.
+   Goal: a calm, dense-but-readable card with subtle motion to make the
+   recap feel like a satisfying bookend. No decorative backgrounds — the
+   existing card--accent surface carries the visual weight. */
+
+.senior-epilogue {
+  /* Let the section breathe on narrow phones without forcing a wide
+     column on desktop — clamp() pins it to the readable range. */
+}
+
+.senior-epilogue__heading {
+  margin: 0 0 var(--space-2) 0;
+  font-weight: 600;
+  color: var(--color-text, inherit);
+}
+
+.senior-epilogue__list {
+  list-style: none;
+  margin: 0 0 var(--space-3) 0;
+  padding: 0;
+}
+
+.senior-epilogue__clubs,
+.senior-epilogue__contracts,
+.senior-epilogue__offers,
+.senior-epilogue__moments {
+  border-top: 1px solid var(--color-divider, rgba(0, 0, 0, 0.06));
+  padding-top: var(--space-2);
+}
+
+.senior-epilogue__clubs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+}
+
+.senior-epilogue__club {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: var(--color-pill-bg, rgba(0, 0, 0, 0.05));
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.senior-epilogue__contracts,
+.senior-epilogue__offers,
+.senior-epilogue__moments {
+  list-style: none;
+}
+
+.senior-epilogue__contracts > li,
+.senior-epilogue__offers > li,
+.senior-epilogue__moments > li {
+  padding: 0.35rem 0;
+  border-bottom: 1px dashed var(--color-divider, rgba(0, 0, 0, 0.06));
+}
+
+.senior-epilogue__contracts > li:last-child,
+.senior-epilogue__offers > li:last-child,
+.senior-epilogue__moments > li:last-child {
+  border-bottom: none;
+}
+
+.senior-epilogue__contracts {
+  /* Use a subtle numeric counter so each contract reads as a step. */
+  counter-reset: senior-contract;
+  padding-left: 1.25rem;
+}
+
+.senior-epilogue__contracts > li {
+  position: relative;
+  padding-left: 0.25rem;
+  list-style: decimal;
+}
+
+.senior-epilogue__note {
+  margin-top: var(--space-3);
+  border-left: 3px solid var(--color-accent, currentColor);
+  padding-left: var(--space-2);
+}
+
+.senior-epilogue__empty {
+  margin: 0;
+}
+
+/* Subtle entrance: fade the list rows in sequence so the recap feels
+   like a satisfying bookend instead of an info-dump. Honors
+   prefers-reduced-motion. */
+@keyframes senior-epilogue-row-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.senior-epilogue__clubs > .senior-epilogue__club,
+.senior-epilogue__contracts > li,
+.senior-epilogue__offers > li,
+.senior-epilogue__moments > li {
+  animation: senior-epilogue-row-in 240ms ease-out both;
+}
+
+.senior-epilogue__clubs > .senior-epilogue__club:nth-child(1),
+.senior-epilogue__contracts > li:nth-child(1),
+.senior-epilogue__offers > li:nth-child(1),
+.senior-epilogue__moments > li:nth-child(1) { animation-delay: 0ms; }
+.senior-epilogue__clubs > .senior-epilogue__club:nth-child(2),
+.senior-epilogue__contracts > li:nth-child(2),
+.senior-epilogue__offers > li:nth-child(2),
+.senior-epilogue__moments > li:nth-child(2) { animation-delay: 60ms; }
+.senior-epilogue__clubs > .senior-epilogue__club:nth-child(3),
+.senior-epilogue__contracts > li:nth-child(3),
+.senior-epilogue__offers > li:nth-child(3),
+.senior-epilogue__moments > li:nth-child(3) { animation-delay: 120ms; }
+.senior-epilogue__clubs > .senior-epilogue__club:nth-child(n+5),
+.senior-epilogue__contracts > li:nth-child(n+5),
+.senior-epilogue__offers > li:nth-child(n+5),
+.senior-epilogue__moments > li:nth-child(n+5) { animation-delay: 180ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .senior-epilogue__clubs > .senior-epilogue__club,
+  .senior-epilogue__contracts > li,
+  .senior-epilogue__offers > li,
+  .senior-epilogue__moments > li {
+    animation: none !important;
+  }
+}
+
+/* High-contrast / dark-theme adjustments: thicker border on the note so
+   the honest disclaimer stays legible without relying on color. */
+html[data-contrast='high'] .senior-epilogue__note {
+  border-left-width: 5px;
+}
