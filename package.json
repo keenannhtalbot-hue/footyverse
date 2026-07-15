@@ -5,8 +5,9 @@
   "type": "module",
   "description": "FootyVerse v0.5 - a single-player football life simulator. Static ES modules, no build step, no runtime dependencies.",
   "scripts": {
-    "test": "node --test tests/*.test.mjs",
-    "qa:smoke": "node --test tests/qa/qaSmokePwa.test.mjs && node --test tests/qa/qaSmokeColdBoot.test.mjs && node --test tests/qa/qaSmokeShell.test.mjs"
+    "test": "node --test tests/*.test.mjs tests/simulations/*.test.mjs",
+    "qa:smoke": "node --test tests/qa/qaSmokePwa.test.mjs && node --test tests/qa/qaSmokeColdBoot.test.mjs && node --test tests/qa/qaSmokeShell.test.mjs",
+    "qa:batch": "node scripts/batchCareerSimulation.mjs"
   },
   "devDependencies": {
     "jsdom": "^29.1.1"
