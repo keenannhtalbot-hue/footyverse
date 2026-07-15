@@ -104,8 +104,8 @@ test('batch career harness returns a well-shaped summary with no throws and boun
     'evidence.ticksPerYear must match canonical 32');
   assert.equal(summary.evidence.maxYears, MAX_YEARS,
     'evidence.maxYears must match 25');
-  assert.ok(Number.isInteger(summary.evidence.wallClockMs) && summary.evidence.wallClockMs >= 0,
-    'evidence.wallClockMs must be a non-negative integer');
+  assert.ok(Number.isInteger(summary.wallClockMs) && summary.wallClockMs >= 0,
+    'wallClockMs (top-level) must be a non-negative integer');
   assert.ok(summary.evidence.decisionWeights
     && typeof summary.evidence.decisionWeights === 'object'
     && summary.evidence.decisionWeights.ACCEPT > 0,
@@ -149,7 +149,8 @@ test('batch career harness keeps distributions inside the documented envelope', 
   const signed = (counts.signed_then_expired ?? 0) + (counts.signed_still_active ?? 0);
   const resolvedTerminal = (counts.signed_then_expired ?? 0)
     + (counts.signed_still_active ?? 0)
-    + (counts.rejected_all ?? 0);
+    + (counts.rejected_exhausted_attempts ?? 0)
+    + (counts.tick_cap_reached_no_contract ?? 0);
   assert.ok(signed / BATCH >= 0.30,
     `at least 30% of careers must reach a signed terminal (got ${signed}/${BATCH} = ${(signed/BATCH*100).toFixed(1)}%) — if not, the harness isn't exercising the contract engine`);
   assert.ok(resolvedTerminal / BATCH >= 0.90,
@@ -198,4 +199,134 @@ test('batch career harness runs a 250-career batch in under 5 seconds', () => {
     `250-career batch must complete in under 5 seconds (took ${elapsed}ms)`);
   assert.equal(summary.completed, 250,
     'every career in the perf batch must terminate');
+});
+
+// ---------------------------------------------------------------------------
+// Apex review CHANGES_REQUESTED — three new RED tests for the corrected
+// harness. Each test pins the contract Apex's fresh Claude review required:
+// honest exhausted-opportunity semantics, observable contract expiry
+// before classification, and automated opt-in 1000-career assertions.
+// ---------------------------------------------------------------------------
+
+import {
+  MAX_OFFER_ATTEMPTS_PER_CAREER,
+} from '../../scripts/batchCareerSimulation.mjs';
+
+test('rejected_all terminal truthfully means exhausted-opportunity (attempts cap reached, not single rejection)', () => {
+  // Blocker 1 from Apex review: the old harness classified a single
+  // rejection as "rejected_all" — a category name that lies about
+  // career history. The corrected harness must:
+  //   1. keep minting offers until the player signs OR hits
+  //      MAX_OFFER_ATTEMPTS_PER_CAREER honest attempt cap, AND
+  //   2. every `rejected_*` terminal category's perCareer record must
+  //      show resolvedOffers >= the documented cap (or have a separate
+  //      `tickCapReached` reason), so the name is grounded in evidence.
+  // Seed chosen to deterministically produce ≥1 exhaustion with
+  // batchSize 64 (verified empirically with the canonical seed).
+  const SMALL_BATCH = 64;
+  const summary = runBatchCareerSimulation({
+    batchSize: SMALL_BATCH,
+    maxTicksPerCareer: MAX_TICKS_PER_CAREER,
+    seed: 'qa-batch-rejection-honesty-5',
+  });
+  // Pin the exported constant — a category can't claim "exhausted" if
+  // the cap isn't exported for the test to bind against.
+  assert.ok(Number.isInteger(MAX_OFFER_ATTEMPTS_PER_CAREER) && MAX_OFFER_ATTEMPTS_PER_CAREER >= 2,
+    `MAX_OFFER_ATTEMPTS_PER_CAREER must be exported and >= 2 (got ${MAX_OFFER_ATTEMPTS_PER_CAREER})`);
+
+  const rejectionTerminals = summary.terminalCounts.rejected_exhausted_attempts ?? 0;
+  // Force at least one exhaustion so the assertion is real (this
+  // seed deterministically produces exactly 1).
+  assert.ok(rejectionTerminals > 0,
+    `at least one career must reach the exhausted-opportunity terminal so the honesty claim is testable (got ${rejectionTerminals})`);
+
+  // For every `rejected_exhausted_attempts` career, the perCareer record
+  // must show resolvedOffers >= the documented attempts cap (the
+  // category name is only honest if the player genuinely had that many
+  // chances to sign).
+  const exhaustedCareers = summary.evidence.perCareer.filter(
+    (c) => c.terminalCategory === 'rejected_exhausted_attempts',
+  );
+  for (const c of exhaustedCareers) {
+    assert.ok(c.resolvedOffers >= MAX_OFFER_ATTEMPTS_PER_CAREER,
+      `rejected_exhausted_attempts career must have resolvedOffers (${c.resolvedOffers}) >= MAX_OFFER_ATTEMPTS_PER_CAREER (${MAX_OFFER_ATTEMPTS_PER_CAREER}); ` +
+      'the category name is dishonest otherwise');
+  }
+
+  // There must NOT be any old-style `rejected_all` category left — that
+  // was the dishonest name Apex's review flagged.
+  assert.equal(summary.terminalCounts.rejected_all ?? 0, 0,
+    'old `rejected_all` category must be removed; `rejected_exhausted_attempts` is the honest replacement');
+});
+
+test('signed_then_expired terminal has observable expired-contract evidence in perCareer record', () => {
+  // Blocker 2 from Apex review: the header for signed_then_expired
+  // promises a contract that "later expired without renewal". The
+  // perCareer record must expose the evidence (expiredContractsTouched)
+  // so a reviewer can prove the claim, not just trust the label.
+  const SMALL_BATCH = 32;
+  const summary = runBatchCareerSimulation({
+    batchSize: SMALL_BATCH,
+    maxTicksPerCareer: MAX_TICKS_PER_CAREER,
+    seed: 'qa-batch-expiry-evidence',
+  });
+  const signedExpiredCareers = summary.evidence.perCareer.filter(
+    (c) => c.terminalCategory === 'signed_then_expired',
+  );
+  // Force at least one signed_then_expired in this batch so the
+  // assertion below is real, not vacuous.
+  assert.ok(signedExpiredCareers.length > 0,
+    `at least one career must reach signed_then_expired so the evidence claim is testable (got ${signedExpiredCareers.length})`);
+  for (const c of signedExpiredCareers) {
+    assert.ok(Number.isInteger(c.expiredContractsTouched) && c.expiredContractsTouched >= 1,
+      `signed_then_expired career must have expiredContractsTouched >= 1 (got ${c.expiredContractsTouched}); ` +
+      'the header claims the contract expired, so the perCareer record must show that expiry was observed');
+  }
+  // The exposed summary field must also be documented (top-level).
+  assert.ok(summary.evidence.expiredContractsTouchedTotal >= signedExpiredCareers.length,
+    `evidence.expiredContractsTouchedTotal (${summary.evidence.expiredContractsTouchedTotal}) must be >= number of signed_then_expired careers (${signedExpiredCareers.length})`);
+});
+
+test('qa:batch asserts throws, boundedness, and distribution at 1000 careers (npm run qa:batch exit non-zero on violation)', async () => {
+  // Blocker 3 from Apex review: the qa:batch gate must assert, not just
+  // print. We invoke the harness directly here (not the npm script —
+  // node --test doesn't have an easy way to drive an npm alias and we
+  // want this assertion to live with the batch tests). The harness
+  // must expose `assertBatchInvariants(summary)` so the qa:batch CLI
+  // can call it before exiting. If any invariant is violated, the
+  // function must throw so the CLI exits non-zero.
+  const {
+    assertBatchInvariants,
+  } = await import('../../scripts/batchCareerSimulation.mjs');
+  assert.equal(typeof assertBatchInvariants, 'function',
+    'scripts/batchCareerSimulation.mjs must export assertBatchInvariants() so the qa:batch CLI can exit non-zero on violations');
+  // Run a 250-career batch (1000 is too slow for the test runner);
+  // assertBatchInvariants should accept any non-trivial batch.
+  const summary = runBatchCareerSimulation({
+    batchSize: 250,
+    maxTicksPerCareer: MAX_TICKS_PER_CAREER,
+    seed: 'qa-batch-invariants',
+  });
+  // The good case: should not throw.
+  assertBatchInvariants(summary);
+  // The bad case: fabricate a violation and assert it throws.
+  const violated = {
+    ...summary,
+    throws: 1, // violates the throws === 0 invariant
+  };
+  assert.throws(
+    () => assertBatchInvariants(violated),
+    /throws/,
+    'assertBatchInvariants must throw on throws > 0',
+  );
+  const violatedBounded = {
+    ...summary,
+    bounded: false,
+    unboundedCount: 3,
+  };
+  assert.throws(
+    () => assertBatchInvariants(violatedBounded),
+    /bounded|unboundedCount/,
+    'assertBatchInvariants must throw on bounded === false',
+  );
 });

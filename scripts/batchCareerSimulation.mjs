@@ -28,14 +28,34 @@
 //   a fixed seed and can be archived as evidence.
 //
 // TERMINAL CATEGORIES (derived from observed state, not invented)
-//   * `signed_then_expired`     — signed at least one contract, which
-//                                  later expired without renewal.
-//   * `signed_still_active`     — signed at least one contract still
-//                                  active when the tick cap is hit.
-//   * `rejected_all`            — rejected every offer, never signed.
+//   * `signed_then_expired`     — signed at least one contract; that
+//                                  contract later reached status
+//                                  'expired' (observed via
+//                                  `expireContracts`) without a
+//                                  replacement being accepted.
+//   * `signed_still_active`     — signed at least one contract that
+//                                  is still 'active' when the tick
+//                                  cap is hit.
+//   * `rejected_exhausted_attempts` — received MAX_OFFER_ATTEMPTS_PER_CAREER
+//                                  offers and rejected every one
+//                                  without ever signing.
+//   * `tick_cap_reached_no_contract` — hit the tick cap before
+//                                  exhausting the offer budget
+//                                  without ever signing (separate
+//                                  from `rejected_exhausted_attempts`
+//                                  because the "exhausted" name
+//                                  would be a lie here).
 //   * `open_offer_pending`      — final state has an unresolved open
 //                                  offer (career ended mid-decision).
 //   * `setup_failure`           — could not build initial state.
+//
+// Honest semantics: a `rejected_*` career must have actually been
+// offered MAX_OFFER_ATTEMPTS_PER_CAREER distinct offers. The harness
+// will not classify a single-rejection career as exhausted; if the
+// tick cap arrives first, the category is
+// `tick_cap_reached_no_contract`. Every perCareer record carries the
+// raw counts (resolvedOffers, expiredContractsTouched) so a reviewer
+// can verify the label matches the evidence.
 //
 // USAGE
 //   node scripts/batchCareerSimulation.mjs               # default N=1000
@@ -83,6 +103,17 @@ const COUNTER_WAGE_MINOR = 130000;
 const COUNTER_SIGNING_BONUS_MINOR = 600000;
 const COUNTER_SQUAD_ROLE = 'rotation';
 const COUNTER_RELEASE_FEE_MINOR = 6000000;
+
+// Honest exhaustion cap for `rejected_exhausted_attempts`: the harness
+// will mint at most this many distinct offers per career before giving
+// up. The category name only earns its label when the player genuinely
+// had this many chances to sign. Picked at 8 because (a) it's well over
+// the seed-adapter's first offer (so a player who rejects the first 7
+// still gets an 8th), (b) it keeps worst-case loop iterations
+// tractable (< ~16 strides per career at STRIDE_MIN_TICKS), and (c)
+// the round-2 counter path means each arrival can take up to two ticks
+// of decision work.
+export const MAX_OFFER_ATTEMPTS_PER_CAREER = 8;
 
 function randInt(rng, min, max) {
   return Math.floor(rng.next() * (max - min + 1)) + min;
@@ -233,40 +264,54 @@ function processDueLoans(state) {
 // Categorize a terminal career state. Derived from observed state — no
 // pre-baked mapping. Categories are added to `terminalCounts` only
 // when first observed.
-function classifyTerminal(state, throwsDuringRun) {
+//
+// Honest semantics (per Apex review CHANGES_REQUESTED):
+//   * `signed_then_expired` REQUIRES at least one contract whose
+//     status === 'expired' in the final state. If the harness somehow
+//     reaches this branch without that evidence (e.g. a tick-cap hit
+//     after a contract was accepted but before expireContracts
+//     flipped it), the classifier downgrades to
+//     `signed_still_active` so the label never lies.
+//   * `rejected_exhausted_attempts` REQUIRES resolvedOffers >=
+//     MAX_OFFER_ATTEMPTS_PER_CAREER. If we hit the tick cap before
+//     exhausting the offer budget, the category is
+//     `tick_cap_reached_no_contract` (separate truthful name).
+function classifyTerminal(state, throwsDuringRun, resolvedOffers) {
   if (throwsDuringRun > 0) return 'threw';
   const playerId = state?.playerId;
   if (typeof playerId !== 'string') return 'unknown_no_player';
   const person = state?.peopleById?.[playerId];
   if (!person) return 'unknown_no_player';
 
-  let activeContract = null;
-  for (const c of Object.values(state.contractsById ?? {})) {
-    if (c?.personId === playerId && c?.status === 'active') {
-      activeContract = c;
-      break;
-    }
-  }
-  const resolvedContract = Object.values(state.contractsById ?? {})
-    .some((c) => c?.personId === playerId && c?.status !== 'open');
+  const contractsForPlayer = Object.values(state.contractsById ?? {})
+    .filter((c) => c?.personId === playerId);
+  const activeContract = contractsForPlayer.find((c) => c.status === 'active');
+  const expiredContract = contractsForPlayer.find((c) => c.status === 'expired');
   const hasOpenOffer = Object.values(state.negotiationsById ?? {})
     .some((n) => n?.personId === playerId && n?.status === 'open');
 
   if (activeContract) return 'signed_still_active';
-  if (resolvedContract && !hasOpenOffer) return 'signed_then_expired';
   if (hasOpenOffer) return 'open_offer_pending';
-  if (!resolvedContract && !hasOpenOffer && !activeContract) {
-    return 'rejected_all';
+  if (expiredContract) return 'signed_then_expired';
+  // No contract and no open offer. Honest split: did we run out of
+  // offer attempts (exhausted) or did the tick cap arrive first?
+  if (resolvedOffers >= MAX_OFFER_ATTEMPTS_PER_CAREER) {
+    return 'rejected_exhausted_attempts';
   }
-  return 'unknown_other';
+  return 'tick_cap_reached_no_contract';
 }
 
-function summarizeCareer(state, throws, ticks, terminalCategory) {
+function summarizeCareer(state, throws, ticks, terminalCategory, resolvedOffers) {
   const playerId = state?.playerId;
   const contracts = Object.values(state.contractsById ?? {})
     .filter((c) => c?.personId === playerId);
-  const resolvedOffers = Object.values(state.negotiationsById ?? {})
-    .filter((n) => n?.personId === playerId && n.status !== 'open');
+  // Apex review Blocker 2: expose the evidence that the
+  // signed_then_expired header claims — number of contracts that
+  // reached status 'expired' during this career. The classifier
+  // uses the same predicate; this is the audit trail.
+  const expiredContractsTouched = contracts.filter((c) => c?.status === 'expired').length;
+  const resolvedOffersObserved = Object.values(state.negotiationsById ?? {})
+    .filter((n) => n?.personId === playerId && n.status !== 'open').length;
   return {
     terminalCategory,
     throws,
@@ -276,22 +321,30 @@ function summarizeCareer(state, throws, ticks, terminalCategory) {
     finalQuarter: state?.clock?.quarterIndex ?? null,
     stage: state?.peopleById?.[playerId]?.career?.stage ?? null,
     contractsTouched: contracts.length,
+    expiredContractsTouched,
     seasonsCovered: new Set(
       contracts
         .filter((c) => Number.isInteger(c.startTick))
         .map((c) => Math.floor((c.startTick ?? 0) / TICKS_PER_YEAR)),
     ).size,
-    resolvedOffers: resolvedOffers.length,
+    resolvedOffers: Number.isInteger(resolvedOffers) ? resolvedOffers : resolvedOffersObserved,
   };
 }
 
 // Drive one career from initial state to terminal. Pure with respect
 // to its inputs; the only side effect is the rng.
+//
+// Honest exhaustion (Apex review Blocker 1): we keep minting fresh
+// offers until either (a) the player accepts one, (b) the player has
+// rejected MAX_OFFER_ATTEMPTS_PER_CAREER distinct offers, or (c) the
+// tick cap is reached. A career that only saw one offer cannot end up
+// labelled `rejected_exhausted_attempts` — the classifier refuses to
+// honour that name without the evidence.
 function runOneCareer(initialState, maxTicksPerCareer, rng) {
   let state = initialState;
   let ticksAdvanced = 0;
   let throws = 0;
-  let arrivals = 0;
+  let attempts = 0; // distinct offers resolved (rejected or accepted)
   const playerId = state.playerId;
 
   while (state.clock.tick < maxTicksPerCareer) {
@@ -302,18 +355,20 @@ function runOneCareer(initialState, maxTicksPerCareer, rng) {
 
     let negotiationId;
     if (!openOffer && !hasActiveContract) {
+      // No open offer, no active contract. If we still have offer
+      // attempts in the budget, mint another; otherwise the career
+      // is honestly exhausted (or tick-capped) and we exit.
+      if (attempts >= MAX_OFFER_ATTEMPTS_PER_CAREER) break;
       try {
         const minted = mintOpenContractOffer(state, rng);
         state = minted.state;
         negotiationId = minted.negotiationId;
-        arrivals += 1;
       } catch (error) {
         throws += 1;
         break;
       }
     } else if (openOffer) {
       negotiationId = openOffer.id;
-      arrivals += 1;
     } else {
       // Active contract — just advance the clock and let
       // expireContracts run; loop continues until tick cap or
@@ -338,6 +393,7 @@ function runOneCareer(initialState, maxTicksPerCareer, rng) {
       throws += 1;
       break;
     }
+    attempts += 1;
 
     const stride = randInt(rng, STRIDE_MIN_TICKS, STRIDE_MAX_TICKS);
     try {
@@ -349,20 +405,10 @@ function runOneCareer(initialState, maxTicksPerCareer, rng) {
       throws += 1;
       break;
     }
-
-    // Terminal: no active contract, no open offer → career ended.
-    const hasActiveAfter = Object.values(state.contractsById ?? {})
-      .some((c) => c?.personId === playerId && c.status === 'active');
-    const hasResolvedContract = Object.values(state.contractsById ?? {})
-      .some((c) => c?.personId === playerId && c.status !== 'open');
-    const hasOpenOfferAfter = Object.values(state.negotiationsById ?? {})
-      .some((n) => n?.personId === playerId && n.status === 'open');
-    if (!hasActiveAfter && !hasResolvedContract && !hasOpenOfferAfter) break;
-    if (!hasActiveAfter && !hasOpenOfferAfter && arrivals > 1) break;
   }
 
-  const terminalCategory = classifyTerminal(state, throws);
-  return summarizeCareer(state, throws, ticksAdvanced, terminalCategory);
+  const terminalCategory = classifyTerminal(state, throws, attempts);
+  return summarizeCareer(state, throws, ticksAdvanced, terminalCategory, attempts);
 }
 
 export function runBatchCareerSimulation(options = {}) {
@@ -403,6 +449,7 @@ export function runBatchCareerSimulation(options = {}) {
         finalQuarter: null,
         stage: null,
         contractsTouched: 0,
+        expiredContractsTouched: 0,
         seasonsCovered: 0,
         resolvedOffers: 0,
       });
@@ -423,6 +470,10 @@ export function runBatchCareerSimulation(options = {}) {
   const completed = perCareer.filter(
     (c) => c.terminalCategory !== 'setup_failure' && c.throws === 0,
   ).length;
+  const expiredContractsTouchedTotal = perCareer.reduce(
+    (sum, c) => sum + (Number.isInteger(c.expiredContractsTouched) ? c.expiredContractsTouched : 0),
+    0,
+  );
 
   const summary = {
     seed,
@@ -440,22 +491,34 @@ export function runBatchCareerSimulation(options = {}) {
       ticksPerYear: TICKS_PER_YEAR,
       maxYears: Math.floor(maxTicksPerCareer / TICKS_PER_YEAR),
       perCareer,
-      wallClockMs: Date.now() - startedAt,
       decisionWeights: {
         ACCEPT: DECISION_WEIGHTS[0],
         COUNTER: DECISION_WEIGHTS[1],
         REJECT: DECISION_WEIGHTS[2],
       },
+      // Apex review Blocker 2: aggregate evidence for the
+      // signed_then_expired header claim. Volatile (timing) fields
+      // like wallClockMs are NOT persisted into the fixture — the
+      // CLI prints them, but archived evidence must be byte-stable
+      // for a fixed seed.
+      expiredContractsTouchedTotal,
+      // wallClockMs is intentionally NOT here — see CLI print path.
     },
+    // Volatile timing data lives at the top level only so the CLI
+    // can show it without polluting the persisted fixture.
+    wallClockMs: Date.now() - startedAt,
   };
 
   if (fixturePath) {
     // Best-effort sync write so callers can archive evidence next to
     // the code. We do not throw on filesystem errors — the batch is
     // useful even without persistence. Create parent dirs as needed.
+    // Persisted fixture omits `wallClockMs` (volatile across machines)
+    // so the 1000-career artifact is byte-stable for a fixed seed.
     try {
       mkdirSync(dirname(fixturePath), { recursive: true });
-      writeFileSync(fixturePath, `${JSON.stringify(summary, null, 2)}\n`);
+      const { wallClockMs: _omit, ...persisted } = summary;
+      writeFileSync(fixturePath, `${JSON.stringify(persisted, null, 2)}\n`);
     } catch (error) {
       // Best-effort — surface the warning via the summary so the
       // CLI caller sees it but tests don't crash on filesystem errors.
@@ -464,6 +527,86 @@ export function runBatchCareerSimulation(options = {}) {
   }
 
   return summary;
+}
+
+// Invariant guard for the qa:batch gate (Apex review Blocker 3). The
+// qa:batch CLI calls this and exits non-zero on throw. Throws an Error
+// with a descriptive message naming every violated invariant; the CLI
+// prints the message so the operator sees which gate failed.
+//
+// Pinned invariants (any of which fails this gate):
+//   - throws === 0                (no fatal in any career loop)
+//   - bounded === true            (every career finished within cap+tolerance)
+//   - unboundedCount === 0
+//   - completed === batchSize     (every career terminated)
+//   - sum(terminalCounts) === batchSize
+//   - At least 30% of careers are in a signed terminal category
+//     (`signed_then_expired` + `signed_still_active`) so the harness
+//     is exercising the contract engine — the most important seam
+//     this gate exists to prove.
+//   - All `signed_then_expired` perCareer records carry
+//     expiredContractsTouched >= 1 (Blocker 2 evidence requirement).
+//   - All `rejected_exhausted_attempts` perCareer records carry
+//     resolvedOffers >= MAX_OFFER_ATTEMPTS_PER_CAREER (Blocker 1
+//     honesty requirement).
+export function assertBatchInvariants(summary) {
+  if (!summary || typeof summary !== 'object') {
+    throw new Error('assertBatchInvariants: summary must be an object');
+  }
+  const violations = [];
+  if (summary.throws !== 0) {
+    violations.push(`throws must be 0 (got ${summary.throws})`);
+  }
+  if (summary.bounded !== true) {
+    violations.push(`bounded must be true (got ${summary.bounded}, unboundedCount=${summary.unboundedCount ?? 'n/a'})`);
+  }
+  if ((summary.unboundedCount ?? 0) !== 0) {
+    violations.push(`unboundedCount must be 0 (got ${summary.unboundedCount})`);
+  }
+  if (summary.completed !== summary.batchSize) {
+    violations.push(`completed must equal batchSize (got completed=${summary.completed}, batchSize=${summary.batchSize})`);
+  }
+  const totalTerminal = Object.values(summary.terminalCounts ?? {})
+    .reduce((s, n) => s + (Number.isInteger(n) ? n : 0), 0);
+  if (totalTerminal !== summary.batchSize) {
+    violations.push(`terminalCounts must sum to batchSize (got sum=${totalTerminal}, batchSize=${summary.batchSize})`);
+  }
+  const signed = (summary.terminalCounts?.signed_then_expired ?? 0)
+    + (summary.terminalCounts?.signed_still_active ?? 0);
+  const signedFraction = summary.batchSize === 0 ? 0 : signed / summary.batchSize;
+  if (signedFraction < 0.30) {
+    violations.push(
+      `at least 30% of careers must reach a signed terminal (got ${signed}/${summary.batchSize} = ${(signedFraction * 100).toFixed(1)}%)`,
+    );
+  }
+  // Blocker 2 audit: every signed_then_expired career must carry
+  // observable expired-contract evidence.
+  for (const c of summary.evidence?.perCareer ?? []) {
+    if (c.terminalCategory === 'signed_then_expired'
+      && !(Number.isInteger(c.expiredContractsTouched) && c.expiredContractsTouched >= 1)) {
+      violations.push(
+        `signed_then_expired career missing expiredContractsTouched >= 1 (got ${c.expiredContractsTouched})`,
+      );
+      break; // first violation is enough; surface once.
+    }
+  }
+  // Blocker 1 audit: every rejected_exhausted_attempts career must
+  // have actually been offered at least MAX_OFFER_ATTEMPTS_PER_CAREER
+  // distinct offers.
+  for (const c of summary.evidence?.perCareer ?? []) {
+    if (c.terminalCategory === 'rejected_exhausted_attempts'
+      && !(Number.isInteger(c.resolvedOffers) && c.resolvedOffers >= MAX_OFFER_ATTEMPTS_PER_CAREER)) {
+      violations.push(
+        `rejected_exhausted_attempts career missing resolvedOffers >= ${MAX_OFFER_ATTEMPTS_PER_CAREER} (got ${c.resolvedOffers})`,
+      );
+      break;
+    }
+  }
+  if (violations.length > 0) {
+    throw new Error(
+      `qa:batch invariants violated:\n  - ${violations.join('\n  - ')}`,
+    );
+  }
 }
 
 // CLI: `node scripts/batchCareerSimulation.mjs [N]` writes the
@@ -487,7 +630,8 @@ function printCliSummary(summary) {
     `  maxTickReached:   ${summary.maxTickReached} / cap ${summary.maxTicksPerCareer}`,
     `  meanTicksPerCareer: ${summary.meanTicksPerCareer}`,
     `  totalTicks:       ${summary.totalTicks}`,
-    `  wallClockMs:      ${summary.evidence.wallClockMs}`,
+    `  wallClockMs:      ${summary.wallClockMs}`,
+    `  expiredContractsTouchedTotal: ${summary.evidence.expiredContractsTouchedTotal}`,
     `  terminalCounts:`,
     rows,
   ];
@@ -506,6 +650,14 @@ function main() {
   const fixturePath = process.env.FOOTY_BATCH_FIXTURE_PATH || DEFAULT_FIXTURE_PATH;
   const summary = runBatchCareerSimulation({ batchSize, seed, fixturePath });
   printCliSummary(summary);
+  // Apex review Blocker 3: the qa:batch gate must assert, not just
+  // print. If any invariant fails, exit non-zero so CI catches it.
+  try {
+    assertBatchInvariants(summary);
+  } catch (error) {
+    process.stderr.write(`\nqa:batch FAILED: ${error?.message ?? error}\n`);
+    process.exit(1);
+  }
 }
 
 const isDirectInvocation = (() => {
