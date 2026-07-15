@@ -28,23 +28,22 @@ function stepBlurb(chain, currentStepNumber, completed) {
   return '';
 }
 
-function stepStateForRow(chain, currentStepId, completed) {
+function stepStateForRow(chain, currentStepId, completed, available) {
   // Returns an array of 3 entries { step, state } where state is one of
   // `done`, `current`, `upcoming`. The renderer turns those into chips.
   const out = [];
-  // -1 guard: a corrupt/legacy save whose chainState entry references an
-  // unknown step would otherwise leave every chip in `upcoming` and look
-  // frozen. Falling back to step 1 keeps the surface honest.
+  // A missing/legacy record has no authoritative current step, so every chip
+  // stays upcoming rather than inventing a current or completed state.
   const currentIndex = chain.steps.findIndex((s) => s.id === currentStepId);
-  const safeIndex = currentIndex === -1 ? 0 : currentIndex;
+  const safeIndex = available && currentIndex >= 0 ? currentIndex : -1;
   for (let i = 0; i < chain.steps.length; i += 1) {
     const step = chain.steps[i];
     let state = 'upcoming';
     if (completed) {
       state = 'done';
-    } else if (i === safeIndex) {
+    } else if (available && i === safeIndex) {
       state = 'current';
-    } else if (i < safeIndex) {
+    } else if (available && i < safeIndex) {
       state = 'done';
     }
     out.push({ step, state });
@@ -56,13 +55,20 @@ function chainStateAvailable(chainState) {
   return Boolean(chainState && chainState.chains && typeof chainState.chains === 'object');
 }
 
+function chainRecordAvailable(chain, record) {
+  if (!record || typeof record !== 'object') return false;
+  if (record.completed === true) return true;
+  return chain.steps.some((step) => step.id === record.currentStepId);
+}
+
 function renderChainRow(chain, chainState) {
-  const available = chainStateAvailable(chainState);
-  const record = available ? chainState.chains[chain.id] : null;
-  const completed = Boolean(record && record.completed === true);
-  const currentStepId = record ? record.currentStepId : chain.steps[0].id;
-  const stepRows = stepStateForRow(chain, currentStepId, completed);
-  const currentIndex = chain.steps.findIndex((s) => s.id === currentStepId);
+  const hasChainState = chainStateAvailable(chainState);
+  const record = hasChainState ? chainState.chains[chain.id] : null;
+  const available = chainRecordAvailable(chain, record);
+  const completed = available && record.completed === true;
+  const currentStepId = available ? record.currentStepId : null;
+  const stepRows = stepStateForRow(chain, currentStepId, completed, available);
+  const currentIndex = available ? chain.steps.findIndex((s) => s.id === currentStepId) : -1;
   const currentStepNumber = completed ? chain.steps.length : currentIndex + 1;
   const stateAttr = completed
     ? 'completed'
@@ -82,12 +88,14 @@ function renderChainRow(chain, chainState) {
     // storyline, step 2 of 3, in progress".
     const statusWord = state === 'done' ? 'done' : state === 'current' ? 'in progress' : 'not yet';
     const chipLabel = `${title} step ${stepNum} of ${chain.steps.length}, ${statusWord}`;
-    return `<span class="storyline-chip storyline-chip--${escapeHtml(state)}" data-storyline-step="${stepNum}" data-storyline-step-state="${escapeHtml(state)}" data-storyline-chip aria-label="${escapeHtml(chipLabel)}"></span>`;
+    return `<span role="listitem" class="storyline-chip storyline-chip--${escapeHtml(state)}" data-storyline-step="${stepNum}" data-storyline-step-state="${escapeHtml(state)}" data-storyline-chip aria-label="${escapeHtml(chipLabel)}"></span>`;
   }).join('');
 
   const badge = completed
     ? `<span class="storyline-badge storyline-badge--done" aria-hidden="true">Completed</span>`
-    : `<span class="storyline-badge storyline-badge--pending" aria-hidden="true">In progress</span>`;
+    : available
+    ? `<span class="storyline-badge storyline-badge--pending" aria-hidden="true">In progress</span>`
+    : `<span class="storyline-badge storyline-badge--pending" aria-hidden="true">Not started</span>`;
 
   const blurb = available ? stepBlurb(chain, currentStepNumber, completed) : 'No chain progress recorded for this save yet.';
 
@@ -100,7 +108,7 @@ function renderChainRow(chain, chainState) {
         </div>
         ${badge}
       </div>
-      <div class="storyline-row__progress" aria-hidden="true">
+      <div class="storyline-row__progress" role="list">
         ${chips}
       </div>
       <p class="storyline-row__status text-small text-dim" id="${escapeHtml(statusId)}" role="status" aria-live="polite">${escapeHtml(blurb)}</p>
@@ -111,8 +119,9 @@ function renderChainRow(chain, chainState) {
 export function renderStorylines(state) {
   const chainState = state && state.chainState ? state.chainState : null;
   const rows = CHAINS.map((chain) => renderChainRow(chain, chainState)).join('');
-  const available = chainStateAvailable(chainState);
-  const summary = available
+  const hasProgress = chainStateAvailable(chainState)
+    && CHAINS.some((chain) => chainRecordAvailable(chain, chainState.chains[chain.id]));
+  const summary = hasProgress
     ? 'Each row tracks one youth-arc storyline. Chips light up as you play the moments that move them forward.'
     : 'No chain progress recorded for this save yet — start a new game to begin these arcs.';
   return `
