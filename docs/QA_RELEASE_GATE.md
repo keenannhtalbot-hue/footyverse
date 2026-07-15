@@ -36,6 +36,12 @@ could only be caught by manual browser QA:
    insets so the dynamic-viewport / notched-device regressions the
    iOS hardening commit closed cannot quietly come back.
 
+> **Static text check only — no layout verification.** The shell-CSS
+> assertion grep-matches the source CSS for the `100dvh` + safe-area
+> properties. jsdom does not lay out, so this catches *deletions* of
+> those properties but cannot catch a regression only visible inside
+> a real browser's box model. Use the device QA checklist for that.
+
 ## The command
 
 ```bash

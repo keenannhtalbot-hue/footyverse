@@ -138,6 +138,10 @@ export async function bootFootyVerse({ localStorageSeed = {}, drainMs = 50 } = {
     for (const key of REQUIRED_STUBS) {
       try { delete globalThis[key]; } catch (_) { /* non-configurable */ }
     }
+    // jsdom docs recommend close() to release timers + listeners; the
+    // window goes out of scope at process exit anyway, but close() makes
+    // the harness safe to embed in a longer-running test runner.
+    try { dom.window.close(); } catch (_) { /* already torn down */ }
   }
 
   return { window, document: window.document, ls, recorder, teardown };
