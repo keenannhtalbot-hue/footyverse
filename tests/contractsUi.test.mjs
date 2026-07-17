@@ -350,6 +350,81 @@ test('open offers expose separate accept, counter, and reject choices while stal
   assert.doesNotMatch(staleHtml, /data-(?:accept|counter|reject)-contract/);
 });
 
+// ---------------------------------------------------------------------------
+// Mobility slice — transfer negotiation UI
+// ---------------------------------------------------------------------------
+// The inbox now renders kind='transfer' negotiations alongside
+// professional-offer ones. They surface a distinct title + accept/reject
+// controls (no counter — the buying club decides terms). The transfer
+// card must escape the buying club name and never leak the seeded
+// redbrook contract into the transfer card body.
+
+function makeTransferOffer() {
+  return {
+    id: 'negotiation-transfer-1',
+    kind: 'transfer',
+    personId: 'person-player',
+    fromClubId: 'club-redbrook',
+    toClubId: 'club-rheintal',
+    toTeamId: 'team-rheintal-senior',
+    createdTick: 50,
+    expiresTick: 60,
+    status: 'open',
+    terms: {
+      transferFeeMinor: 3000000,
+      durationTicks: 128,
+      wagePerWeekMinor: 150000,
+      signingBonusMinor: 50000,
+      squadRole: 'starter',
+    },
+  };
+}
+
+test('transfer inbox renders transfer negotiations with accept/reject controls and an escaped club name', () => {
+  const careerState = createCareerStateForPlayer(makePlayer(), 44);
+  // Plant a transfer target + offer against the player.
+  careerState.clubsById['club-rheintal'] = {
+    id: 'club-rheintal', name: '<b>Rheintal</b> FC', countryId: 'switzerland',
+    teamIds: ['team-rheintal-senior'],
+    finances: { wageBudgetMinor: 20000000, transferBudgetMinor: 8000000 },
+  };
+  careerState.teamsById['team-rheintal-senior'] = {
+    id: 'team-rheintal-senior', clubId: 'club-rheintal', level: 'senior', squadPersonIds: [],
+  };
+  careerState.negotiationsById['negotiation-transfer-1'] = makeTransferOffer();
+
+  const html = renderContractInbox(careerState);
+
+  // Both kinds render in one inbox.
+  assert.match(html, /data-accept-contract="negotiation-contract-1"/);
+  assert.match(html, /data-accept-transfer="negotiation-transfer-1"/);
+  assert.match(html, /data-reject-transfer="negotiation-transfer-1"/);
+  // Hostile club name is escaped, NOT injected raw.
+  assert.match(html, /&lt;b&gt;Rheintal&lt;\/b&gt; FC/);
+  assert.doesNotMatch(html, /<b>Rheintal<\/b> FC/);
+  // Honest fee disclosure — formatted in pounds minor→major.
+  assert.match(html, /£30,000/);
+  assert.match(html, /Starter/);
+});
+
+test('transfer inbox filters out stale (non-open) transfer negotiations', () => {
+  const careerState = createCareerStateForPlayer(makePlayer(), 44);
+  careerState.clubsById['club-rheintal'] = {
+    id: 'club-rheintal', name: 'Rheintal FC', countryId: 'switzerland',
+    teamIds: ['team-rheintal-senior'],
+    finances: { wageBudgetMinor: 20000000, transferBudgetMinor: 8000000 },
+  };
+  careerState.teamsById['team-rheintal-senior'] = {
+    id: 'team-rheintal-senior', clubId: 'club-rheintal', level: 'senior', squadPersonIds: [],
+  };
+  careerState.negotiationsById['negotiation-transfer-1'] = makeTransferOffer();
+  careerState.negotiationsById['negotiation-transfer-1'].status = 'rejected';
+
+  const html = renderContractInbox(careerState);
+  assert.doesNotMatch(html, /data-accept-transfer/);
+  assert.match(html, /Rheintal FC/);
+});
+
 test('counter form values become canonical integer terms while retaining the signing bonus', () => {
   const existing = createCareerStateForPlayer(makePlayer(), 44)
     .negotiationsById['negotiation-contract-1'].terms;

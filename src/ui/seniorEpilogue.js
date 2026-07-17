@@ -11,6 +11,7 @@
 // pathway/status block in football.js).
 
 import { escapeHtml } from './helpers.js';
+import { renderPressConferenceList } from './pressConference.js';
 
 const SENIOR_STAGE = 'senior';
 
@@ -265,10 +266,14 @@ export function renderSeniorEpilogueCard(state) {
   // Empty / sparse panel uses its own <section aria-labelledby="...">
   // because the shared card() helper doesn't expose id+aria hooks.
   if (summary.sparse) {
+    const playerName = state?.player?.name ?? 'the player';
+    const pressList = renderPressConferenceList(state?.careerState, { playerName });
     return `
       <section class="card card--accent full-span senior-epilogue" aria-labelledby="senior-epilogue-title">
         <h2 id="senior-epilogue-title">Senior journey so far</h2>
         <p class="text-dim senior-epilogue__empty">${escapeHtml(summary.emptyNote)}</p>
+        <h3 class="senior-epilogue__press-heading">Press conferences</h3>
+        ${pressList}
       </section>
     `;
   }
@@ -335,7 +340,11 @@ export function renderSeniorEpilogueCard(state) {
   // negative test for "MVP|trophy|award|champion|golden boot" stays clean.
   const note = `<p class="text-small text-dim senior-epilogue__note">Only the recorded career history is shown. Leagues, trophies, and retirement stats are not part of the game yet.</p>`;
 
-  const gridBody = `${seasonsHtml}${clubsList}${contractsList}${offersList}${momentsList}${note}`;
+  const pressHeading = `<h3 class="senior-epilogue__press-heading">Press conferences</h3>`;
+  const playerName = state?.player?.name ?? 'the player';
+  const pressList = renderPressConferenceList(state?.careerState, { playerName });
+
+  const gridBody = `${seasonsHtml}${clubsList}${contractsList}${offersList}${momentsList}${note}${pressHeading}${pressList}`;
 
   return `
     <section class="card card--accent full-span senior-epilogue" aria-labelledby="senior-epilogue-title">

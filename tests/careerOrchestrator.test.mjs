@@ -245,6 +245,18 @@ test('ACCEPT_TRANSFER delegates the atomic transition and appends one determinis
   }]);
   assert.deepEqual(first.state.ledger, [priorEvent, ...first.events]);
   assert.equal(first.state.idCounters.event, 9);
+
+  // Mobility slice: the orchestrator's ACCEPT_TRANSFER must cascade
+  // through transferEngine and flip person.career to the buying club.
+  // Stage, when defined, is preserved (a transfer is not a promotion
+  // or demotion event).
+  const careerAfter = first.state.peopleById['person-player'].career;
+  const stageBefore = state.peopleById['person-player'].career.stage;
+  assert.equal(careerAfter.currentTeamId, 'team-rheintal-senior');
+  assert.equal(careerAfter.currentContractId, 'contract-2');
+  assert.equal(careerAfter.parentClubTeamId, null);
+  assert.equal(careerAfter.loanTeamId, null);
+  assert.equal(careerAfter.stage, stageBefore, 'career stage must NOT be changed by a transfer');
 });
 
 test('invalid or stale ACCEPT_TRANSFER commands fail atomically without events', () => {

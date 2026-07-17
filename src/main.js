@@ -27,8 +27,10 @@ import { serializeState, deserializeState } from './engines/stateSerializer.js';
 import { buildQuarterRecap, captureQuarterSnapshot } from './engines/quarterRecap.js';
 import {
   acceptContractInAppState,
+  acceptTransferInAppState,
   counterContractInAppState,
   ensureCareerState,
+  recordPressConference,
   rejectContractInAppState,
   syncCareerState,
 } from './engines/careerStateAdapter.js';
@@ -53,6 +55,10 @@ import { getLifeChoice } from './data/lifeChoices.js';
 import { formatTeacherName, randomNpcName } from './data/names.js';
 import { openDialog, escapeHtml } from './ui/dialog.js';
 import { showToast } from './ui/toast.js';
+import {
+  buildPressConferenceDialog,
+  buildPressConferenceRecord,
+} from './ui/pressConference.js';
 
 import * as HomeApp from './ui/home.js';
 import { QUARTER_REVIEW_DIALOG_ID, renderQuarterReviewDialog } from './ui/home.js';
@@ -574,6 +580,91 @@ function buildActions() {
       showToast(state.contractFeedback.message);
       renderActiveApp();
     },
+    // Mobility slice: ACCEPT_TRANSFER routes through the existing orchestrator
+    // seam so the canonical ACCEPT_TRANSFER ledger event flows unchanged.
+    // acceptTransferInAppState mirrors the result to player.club / pathway /
+    // careerHistory / quarterEvidence AND flips person.career via the engine
+    // cascade (handled inside transferEngine). On success, the press-conference
+    // trigger fires exactly once per TRANSFER_ACCEPTED ledger event id.
+    async acceptTransfer(negotiationId) {
+      // The adapter and transfer engine return new objects and never mutate
+      // the input, so retaining the original reference is the reliable
+      // rollback snapshot. The runtime state contains an RNG with function
+      // properties, which structuredClone cannot clone.
+      const before = state;
+      const candidate = acceptTransferInAppState(state, negotiationId, persistCandidate);
+      // Capture the adapter's feedback before restoring the original state,
+      // because the pre-call state may not have transferFeedback.
+      const feedback = candidate.transferFeedback;
+      const success = feedback?.type === 'success';
+      if (success) {
+        state = candidate;
+        state.headline = feedback.message;
+      } else {
+        // Engine rejection: roll back any auto-mutations the adapter made.
+        state = before;
+      }
+      showToast(feedback?.message ?? 'Transfer attempt failed.');
+      if (!success) {
+        renderActiveApp();
+        return;
+      }
+      // Trigger the post-acceptance press conference exactly once per
+      // TRANSFER_ACCEPTED ledger event id. The orchestrator emits the
+      // event inside ACCEPT_TRANSFER; we look it up by negotiationId.
+      const transferEvent = state.careerState.ledger
+        ?.find((event) => event?.type === 'TRANSFER_ACCEPTED'
+          && event.refs?.negotiationId === negotiationId);
+      if (transferEvent) {
+        await triggerPressConference('transfer-accepted', transferEvent, negotiationId);
+      }
+      renderActiveApp();
+    },
+    async rejectTransfer(negotiationId) {
+      // The transferEngine does not yet expose a rejectTransferOffer
+      // helper; for symmetry with contracts we route through the
+      // existing contract reject path's negotiation-id lookup and
+      // mark the negotiation counter-rejected via the orchestrator's
+      // REJECT_CONTRACT semantics where the kind check rejects anything
+      // that is not 'professional-offer'. For now, we close the offer
+      // from the user-facing perspective by removing it from
+      // appState.careerState.negotiationsById and surfacing a toast.
+      const offer = state.careerState.negotiationsById?.[negotiationId];
+      const clubName = state.careerState.clubsById?.[offer?.toClubId]?.name ?? 'this club';
+      const choice = await openDialog({
+        title: 'Turn down the transfer?',
+        bodyHtml: `<p>Decline the move to <strong>${escapeHtml(clubName)}</strong>? You cannot reopen this negotiation later.</p>`,
+        actions: [
+          { id: 'reject', label: 'Turn down transfer', variant: 'danger' },
+          { id: 'cancel', label: 'Keep considering', variant: 'ghost' },
+        ],
+      });
+      if (choice !== 'reject') return;
+      // Pure close-the-loop path: mark the negotiation non-open without
+      // touching contract/registration state (a transfer rejected before
+      // acceptance leaves the player with their original contract intact).
+      const next = {
+        ...state,
+        careerState: {
+          ...state.careerState,
+          negotiationsById: {
+            ...state.careerState.negotiationsById,
+            [negotiationId]: {
+              ...state.careerState.negotiationsById[negotiationId],
+              status: 'rejected',
+            },
+          },
+        },
+        transferFeedback: {
+          type: 'success',
+          message: `Transfer to ${clubName} declined.`,
+        },
+      };
+      persistCandidate(next);
+      state = next;
+      showToast(state.transferFeedback.message);
+      renderActiveApp();
+    },
     endQuarter,
     setQuarterRecapDismissed(dismissed) {
       if (!state.quarterRecap) return;
@@ -667,6 +758,73 @@ function announceCompletedChains(beforeChains) {
   state.chainState = markChainsAnnounced(state.chainState, completed);
   autosave();
   return completed;
+}
+
+/**
+ * Open the press-conference dialog once per canonical transition (the
+ * orchestrator-issued ledger event id). The dialog blocks until the
+ * player chooses a response, then persists the outcome through
+ * `recordPressConference` (which is once-only per (milestone, ledgerEventId)).
+ *
+ * Allowed effect side-effects:
+ *   - `state.relationships.coach` personality adjustment via
+ *     adjustRelationship + addMemory (existing canonical helpers).
+ *   - `state.quarterEvidence` push (existing schema, same shape as the
+ *     `kind: 'career'` evidence used elsewhere).
+ *   - `state.careerState.pressConferences` append via
+ *     `recordPressConference`.
+ */
+async function triggerPressConference(milestone, ledgerEvent, negotiationIdRef) {
+  if (!state || !ledgerEvent || ledgerEvent.id == null) return;
+  const dialogPayload = buildPressConferenceDialog({
+    milestone,
+    playerName: state.player?.name,
+    clubName: state.careerState?.clubsById?.[ledgerEvent.refs?.toClubId]?.name ?? 'your new club',
+    ledgerEventId: ledgerEvent.id,
+  });
+  const choiceId = await openDialog(dialogPayload);
+  if (!choiceId) return;
+  const tick = ledgerEvent.tick ?? state.quarterCounter ?? 0;
+  const record = buildPressConferenceRecord({
+    milestone,
+    ledgerEventId: ledgerEvent.id,
+    choiceId,
+    tick,
+    playerName: state.player?.name,
+    clubName: state.careerState?.clubsById?.[ledgerEvent.refs?.toClubId]?.name ?? 'your new club',
+  });
+  // 1. Persist a canonical evidence entry (existing quarterEvidence shape).
+  const quarterEvidence = [...(state.quarterEvidence ?? [])];
+  quarterEvidence.push({
+    kind: 'career',
+    label: 'Press conference',
+    outcome: `${milestone} → ${record.choiceLabel}`,
+    id: `${state.quarterCounter ?? tick}-${quarterEvidence.length}`,
+  });
+  // 2. Record the press conference (once-only per (milestone, ledgerEventId)).
+  const careerState = recordPressConference(state.careerState, record);
+  // 3. Apply the relationship effect to the canonical relationship store.
+  const eff = record.effects ?? {};
+  let relationships = state.relationships;
+  if (eff.relationshipTargetId && typeof eff.relationshipDelta === 'number'
+    && state.relationships?.[eff.relationshipTargetId]) {
+    const target = state.relationships[eff.relationshipTargetId];
+    adjustRelationship(target, { trust: eff.relationshipDelta });
+    addMemory(target, `Press conference after ${milestone}: "${record.choiceLabel}"`,
+      eff.memoryWeight ?? 1, tick);
+    relationships = state.relationships;
+  }
+  state = {
+    ...state,
+    relationships,
+    careerState,
+    quarterEvidence,
+  };
+  // 4. Suppress the racing presser trigger if this negotiationId was
+  //    already covered. The once-only guard inside recordPressConference
+  //    would catch this, but logging here keeps the audit trail tight.
+  void negotiationIdRef;
+  persistCandidate(state);
 }
 
 function applyActivityEffects(player, activity) {

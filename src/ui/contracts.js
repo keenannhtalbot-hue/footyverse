@@ -60,12 +60,13 @@ export function getContractOffers(careerState) {
     ? careerState.contractsById?.[currentContractId]
     : null;
   return Object.values(careerState?.negotiationsById ?? {})
-    .filter((offer) => offer.kind === 'professional-offer' && offer.personId === careerState.playerId)
+    .filter((offer) => (offer.kind === 'professional-offer' || offer.kind === 'transfer')
+      && offer.personId === careerState.playerId)
     .sort((left, right) => left.expiresTick - right.expiresTick || left.id.localeCompare(right.id))
     .map((offer) => ({
       ...offer,
       clubName: careerState.clubsById?.[offer.toClubId]?.name ?? 'Unknown club',
-      contractStatus: offer.status === 'accepted'
+      contractStatus: offer.status === 'accepted' && offer.kind === 'professional-offer'
         ? careerState.contractsById?.[offer.contractId]?.status ?? currentContract?.status ?? null
         : null,
       expired: offer.status === 'open' && careerState.clock.tick > offer.expiresTick,
@@ -73,6 +74,11 @@ export function getContractOffers(careerState) {
 }
 
 function offerHtml(offer, currentTick) {
+  if (offer.kind === 'transfer') return transferOfferHtml(offer, currentTick);
+  return contractOfferHtml(offer, currentTick);
+}
+
+function contractOfferHtml(offer, currentTick) {
   const roundsRemaining = Math.max(0, offer.maxRounds - offer.roundsUsed);
   const stale = offer.expired || offer.status !== 'open';
   const termEnded = offer.status === 'accepted' && offer.contractStatus === 'expired';
@@ -125,6 +131,42 @@ function offerHtml(offer, currentTick) {
   );
 }
 
+// Transfer offer card — distinct from a contract offer: no counter
+// form (the buying club decides terms), accept/reject only.
+function transferOfferHtml(offer, currentTick) {
+  const stale = offer.expired || offer.status !== 'open';
+  const timing = offer.expired
+    ? 'This transfer offer has expired.'
+    : offer.status === 'accepted'
+      ? 'Transfer recorded — your registration has moved.'
+      : `Expires in ${offer.expiresTick - currentTick} ticks`;
+  const acceptNote = offer.status === 'accepted'
+    ? '<p class="offer-feedback" role="status">Transfer complete. Your new club is recorded across all surfaces.</p>'
+    : '';
+  const fee = Number.isFinite(offer.terms?.transferFeeMinor)
+    ? formatMoney(offer.terms.transferFeeMinor)
+    : 'Undisclosed';
+  return card(
+    `<span class="offer-card__club">Transfer to ${escapeHtml(offer.clubName)}</span>`,
+    `<p class="text-dim">${timing}</p>
+    <dl class="offer-terms">
+      <div><dt>Transfer fee</dt><dd>${fee}</dd></div>
+      <div><dt>Duration</dt><dd>${formatDuration(offer.terms.durationTicks)}</dd></div>
+      <div><dt>Weekly wage</dt><dd>${formatMoney(offer.terms.wagePerWeekMinor)}/week</dd></div>
+      <div><dt>Signing bonus</dt><dd>${formatMoney(offer.terms.signingBonusMinor)}</dd></div>
+      <div><dt>Squad role</dt><dd>${escapeHtml(capitalize(offer.terms.squadRole))}</dd></div>
+    </dl>
+    ${acceptNote}
+    ${stale
+      ? `<p class="offer-feedback" role="status">${escapeHtml(capitalize(offer.status || 'Recorded'))} — no action is available.</p>`
+      : `<div class="offer-actions">
+        <button type="button" class="btn btn--primary" data-accept-transfer="${escapeHtml(offer.id)}" aria-label="Accept transfer offer from ${escapeHtml(offer.clubName)}">Accept transfer</button>
+        <button type="button" class="btn btn--ghost" data-reject-transfer="${escapeHtml(offer.id)}" aria-label="Reject transfer offer from ${escapeHtml(offer.clubName)}">Decline</button>
+      </div>`}`,
+    { accent: !stale, fullSpan: true },
+  );
+}
+
 export function renderContractInbox(careerState, feedback = null) {
   const offers = getContractOffers(careerState);
   return `<section class="contract-inbox full-span" aria-labelledby="contract-inbox-title">
@@ -149,6 +191,23 @@ export function render(container, { state, actions }) {
     button.addEventListener('click', async () => {
       button.disabled = true;
       await actions.rejectContract(button.getAttribute('data-reject-contract'));
+      if (button.isConnected) button.disabled = false;
+    });
+  });
+  container.querySelectorAll('[data-accept-transfer]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      if (typeof actions.acceptTransfer === 'function') {
+        await actions.acceptTransfer(button.getAttribute('data-accept-transfer'));
+      }
+    });
+  });
+  container.querySelectorAll('[data-reject-transfer]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      if (typeof actions.rejectTransfer === 'function') {
+        await actions.rejectTransfer(button.getAttribute('data-reject-transfer'));
+      }
       if (button.isConnected) button.disabled = false;
     });
   });

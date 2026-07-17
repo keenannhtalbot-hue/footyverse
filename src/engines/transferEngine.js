@@ -46,6 +46,18 @@ export function acceptTransferOfferWithResult(state, negotiationId) {
   if (state.clock.tick > negotiation.expiresTick) {
     throw new Error(`Negotiation has expired: ${negotiationId}`);
   }
+  // Defensive guard: a transfer from a club to itself is a no-op
+  // for fee accounting (the from-club write would overwrite the
+  // to-club write at the un-debited original finances). The happy
+  // path inserts only other-club targets, but the engine MUST NOT
+  // silently perform arithmetic that nets to a zero budget change.
+  // This was surfaced by Claude review on the 2026-07-15 mobility
+  // slice (finding severity: low, blocking: no) and folded back here
+  // as a defensive guard with no behavioural change for canonical
+  // gameplay.
+  if (negotiation.fromClubId === negotiation.toClubId) {
+    throw new Error(`Transfer origin and destination are the same club: ${negotiation.fromClubId}`);
+  }
 
   const sellingContract = findActiveOwningContract(state, negotiation.personId, negotiation.fromClubId);
   if (!sellingContract) {
@@ -121,6 +133,21 @@ export function acceptTransferOfferWithResult(state, negotiationId) {
     ...next.negotiationsById[negotiationId],
     status: 'accepted',
   };
+
+  // Mobility parity with contractEngine: flip the player's canonical
+  // career pointer to the buying club. Stage stays 'senior' — a transfer
+  // is not a promotion/demotion event, the player is still senior. If
+  // the person record is missing (defensive), do not touch the pointer.
+  const person = next.peopleById?.[negotiation.personId];
+  if (person && typeof person === 'object' && person.career && typeof person.career === 'object') {
+    person.career = {
+      ...person.career,
+      currentTeamId: next.registrationsById[registrationId].teamId,
+      currentContractId: contractId,
+      parentClubTeamId: null,
+      loanTeamId: null,
+    };
+  }
 
   return { state: next, contractId, registrationId };
 }

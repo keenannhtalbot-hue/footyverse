@@ -33,6 +33,11 @@ export function serializeState(state) {
     // predating this field ride through deserialize with `announced` left
     // as {} — the announcer hook treats missing and empty identically.
     chainState: state.chainState ?? null,
+    // careerState is passed through verbatim; legacy v2 saves predating
+    // the press-conferences feature carry no `pressConferences` field and
+    // hydrate to `[]` via the adapter's ensureCareerState — the same
+    // migration-safe pattern used for Storylines `announced`. See the
+    // ensureCareerState implementation in src/engines/careerStateAdapter.js.
   };
 }
 

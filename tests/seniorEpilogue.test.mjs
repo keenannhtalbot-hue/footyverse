@@ -671,3 +671,46 @@ test('senior epilogue uses a dedicated CSS class so it can be styled separately'
   assert.match(css, /\.senior-epilogue\s*\{/);
   assert.match(css, /\.senior-epilogue__list\s*\{/);
 });
+
+// ---------------------------------------------------------------------------
+// Press-conference slice — render the recorded conferences inline.
+// ---------------------------------------------------------------------------
+
+test('renderSeniorEpilogueCard renders a "Press conferences" card section with newest-first records and escaped text', () => {
+  const base = makeCareerState();
+  base.pressConferences = [
+    {
+      id: 'event-9', tick: 60, milestone: 'transfer-accepted',
+      question: 'Q?<script>alert(1)</script>',
+      choiceId: 'professional', choiceLabel: 'I am here to <b>work</b> hard.',
+      effects: {},
+      ledgerEventId: 'event-9',
+    },
+    {
+      id: 'event-2', tick: 50, milestone: 'transfer-accepted',
+      question: 'Earlier presser.', choiceId: 'gracious', choiceLabel: 'Grateful.',
+      effects: {}, ledgerEventId: 'event-2',
+    },
+  ];
+  const state = makeState({ careerState: base });
+  const html = renderSeniorEpilogueCard(state);
+
+  // Press-conference list rendered.
+  assert.match(html, /senior-epilogue__press-list/);
+  // Hostile + rich text are escaped.
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.match(html, /I am here to &lt;b&gt;work&lt;\/b&gt; hard\./);
+  assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
+  // Newest-first ordering: tick 60 must come before tick 50 in the list.
+  const tick60 = html.indexOf('Tick 60');
+  const tick50 = html.indexOf('Tick 50');
+  assert.ok(tick60 > -1 && tick50 > -1, 'both presser entries should be present');
+  assert.ok(tick60 < tick50, 'newest press record must render before the older one');
+});
+
+test('renderSeniorEpilogueCard press-conference list shows the empty-state honest copy when there are no records', () => {
+  const state = makeState({ careerState: makeCareerState() });
+  const html = renderSeniorEpilogueCard(state);
+  assert.match(html, /senior-epilogue__press-empty/);
+  assert.match(html, /No press conferences recorded yet/);
+});
