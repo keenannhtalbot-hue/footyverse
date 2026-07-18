@@ -3,6 +3,30 @@
 // DOM-independent and pure.
 
 import { ensureGuidedSeason } from './guidedSeason.js';
+import { createEventHistory } from './eventEngine.js';
+
+// Migration-safe hydration for eventHistory, mirroring the pattern
+// used for guidedSeason above and for ensureCareerState in
+// src/engines/careerStateAdapter.js. Legacy saves predating the
+// eventHistory field (or carrying a malformed shape) must return a
+// fresh, empty eventHistory rather than dereferencing undefined —
+// dereferencing crashed the boot path on legacy records with a raw
+// TypeError. Raised by Claude review on 2026-07-17.
+function ensureEventHistory(saved) {
+  const firedIds = saved?.firedIds;
+  const lastFiredAt = saved?.lastFiredAt;
+  const log = saved?.log;
+  const firedIdsOk = Array.isArray(firedIds) || firedIds instanceof Set;
+  const lastFiredAtOk = Array.isArray(lastFiredAt) || lastFiredAt instanceof Map;
+  if (firedIdsOk && lastFiredAtOk) {
+    return {
+      firedIds: new Set(firedIds),
+      lastFiredAt: new Map(lastFiredAt),
+      log: Array.isArray(log) ? log : [],
+    };
+  }
+  return createEventHistory();
+}
 
 export function serializeState(state) {
   return {
@@ -54,11 +78,7 @@ export function deserializeState(saved) {
     quarterCounter: saved.quarterCounter,
     seed: saved.seed,
     rngState: saved.rngState,
-    eventHistory: {
-      firedIds: new Set(saved.eventHistory.firedIds),
-      lastFiredAt: new Map(saved.eventHistory.lastFiredAt),
-      log: saved.eventHistory.log,
-    },
+    eventHistory: ensureEventHistory(saved.eventHistory),
     // Legacy saves predating guidedSeason get a null in the serialized JSON;
     // we hydrate at the deserialization boundary so callers can use the
     // returned object without an extra ensureGuidedSeason pass. main.js still

@@ -2,7 +2,15 @@
 // DOM-independent, pure — validates before cloning so failures are atomic and does not mutate input.
 
 function assertContainers(state) {
-  for (const field of ['contractsById', 'registrationsById', 'negotiationsById', 'clubsById']) {
+  // Schema invariants raised by Claude review on 2026-07-17:
+  // idCounters and clock must be validated here so a malformed/legacy
+  // state fails atomically with a clean Error rather than throwing a
+  // raw TypeError from inside allocateId or the expiry comparison.
+  // Mirrors assertContractState in src/engines/contractEngine.js:10-20.
+  for (const field of [
+    'contractsById', 'registrationsById', 'negotiationsById',
+    'clubsById', 'idCounters', 'clock',
+  ]) {
     if (!state[field] || typeof state[field] !== 'object' || Array.isArray(state[field])) {
       throw new Error(`${field} must be an object.`);
     }
@@ -136,18 +144,24 @@ export function acceptTransferOfferWithResult(state, negotiationId) {
 
   // Mobility parity with contractEngine: flip the player's canonical
   // career pointer to the buying club. Stage stays 'senior' — a transfer
-  // is not a promotion/demotion event, the player is still senior. If
-  // the person record is missing (defensive), do not touch the pointer.
-  const person = next.peopleById?.[negotiation.personId];
-  if (person && typeof person === 'object' && person.career && typeof person.career === 'object') {
-    person.career = {
-      ...person.career,
-      currentTeamId: next.registrationsById[registrationId].teamId,
-      currentContractId: contractId,
-      parentClubTeamId: null,
-      loanTeamId: null,
-    };
+  // is not a promotion/demotion event, the player is still senior.
+  // Atomic-failure regression raised by Claude review on 2026-07-17:
+  // a missing/non-object person.career MUST throw here rather than
+  // silently skip the pointer sync — silently skipping leaves contract
+  // and registration ownership flipped while the canonical career
+  // pointer stays stale, which is internally inconsistent. Mirrors the
+  // contractEngine guard at src/engines/contractEngine.js:84-87.
+  const person = next.peopleById[negotiation.personId];
+  if (!person || !person.career || typeof person.career !== 'object' || Array.isArray(person.career)) {
+    throw new Error(`Unknown person or career: ${negotiation.personId}`);
   }
+  person.career = {
+    ...person.career,
+    currentTeamId: next.registrationsById[registrationId].teamId,
+    currentContractId: contractId,
+    parentClubTeamId: null,
+    loanTeamId: null,
+  };
 
   return { state: next, contractId, registrationId };
 }

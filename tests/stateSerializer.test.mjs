@@ -169,3 +169,46 @@ test('deserializeState hydrates a missing guidedSeason into a safe empty shape v
   assert.deepEqual(restored.guidedSeason.seen, {});
   assert.equal(restored.guidedSeason.resetCount, 0);
 });
+
+// Migration-safe regressions raised by Claude review on 2026-07-17:
+// deserializeState must not dereference saved.eventHistory when the
+// payload is absent or malformed — legacy saves pre-dating the field
+// (or carrying a half-written shape) must hydrate to a fresh, empty
+// eventHistory that the gameplay path can call into without crashing.
+// Mirrors the migration-safe pattern already used for guidedSeason
+// (see ensureGuidedSeason in src/engines/guidedSeason.js).
+test('deserializeState hydrates a migration-safe eventHistory when the saved payload omits it entirely', () => {
+  const legacyState = {
+    player: { name: 'Legacy' },
+    world: { year: 2026 },
+    relationships: {},
+    settings: { theme: 'dark' },
+    quarterCounter: 0,
+    seed: 'legacy-seed',
+    // intentionally no eventHistory key — pre-eventHistory-era save
+  };
+  const restored = deserializeState(legacyState);
+  assert.ok(restored.eventHistory, 'eventHistory must be present after hydration');
+  assert.ok(restored.eventHistory.firedIds instanceof Set, 'firedIds must be a Set');
+  assert.ok(restored.eventHistory.lastFiredAt instanceof Map, 'lastFiredAt must be a Map');
+  assert.equal(restored.eventHistory.firedIds.size, 0);
+  assert.equal(restored.eventHistory.lastFiredAt.size, 0);
+  assert.deepEqual(restored.eventHistory.log, []);
+});
+
+test('deserializeState hydrates a migration-safe eventHistory when the saved payload is malformed', () => {
+  const legacyState = {
+    player: { name: 'Legacy' },
+    world: { year: 2026 },
+    relationships: {},
+    settings: { theme: 'dark' },
+    quarterCounter: 0,
+    seed: 'legacy-seed',
+    eventHistory: { firedIds: 'not-an-array', lastFiredAt: null, log: undefined },
+  };
+  const restored = deserializeState(legacyState);
+  assert.ok(restored.eventHistory.firedIds instanceof Set);
+  assert.ok(restored.eventHistory.lastFiredAt instanceof Map);
+  assert.equal(restored.eventHistory.firedIds.size, 0);
+  assert.equal(restored.eventHistory.lastFiredAt.size, 0);
+});

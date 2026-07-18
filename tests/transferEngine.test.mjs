@@ -212,3 +212,85 @@ test('acceptTransferOffer rejects same-club (origin === destination) transfers a
   );
   assert.deepEqual(state, snapshot, 'state must remain byte-identical on rejection');
 });
+
+// Schema invariants raised by Claude review on 2026-07-17: assertContainers
+// must validate state.idCounters and state.clock before allocateId/expiry
+// access so a malformed/legacy state throws a clean atomic Error rather than
+// a raw TypeError from inside allocateId. Mirrors contractEngine's
+// assertContractState (src/engines/contractEngine.js:10-20).
+test('acceptTransferOffer throws a clean error when state.idCounters is missing', () => {
+  const state = makeState();
+  delete state.idCounters;
+  assert.throws(
+    () => acceptTransferOffer(state, 'negotiation-t1'),
+    /idCounters must be an object\./,
+  );
+});
+
+test('acceptTransferOffer throws a clean error when state.idCounters is not an object', () => {
+  const state = makeState();
+  state.idCounters = null;
+  assert.throws(
+    () => acceptTransferOffer(state, 'negotiation-t1'),
+    /idCounters must be an object\./,
+  );
+});
+
+test('acceptTransferOffer throws a clean error when state.idCounters is an array', () => {
+  const state = makeState();
+  state.idCounters = [];
+  assert.throws(
+    () => acceptTransferOffer(state, 'negotiation-t1'),
+    /idCounters must be an object\./,
+  );
+});
+
+test('acceptTransferOffer throws a clean error when state.clock is missing', () => {
+  const state = makeState();
+  delete state.clock;
+  assert.throws(
+    () => acceptTransferOffer(state, 'negotiation-t1'),
+    /clock must be an object\./,
+  );
+});
+
+// Atomic-failure regression raised by Claude review on 2026-07-17: a
+// missing/non-object person.career must NOT silently skip the career
+// pointer synchronization — the engine must reject atomically so contract
+// and registration ownership do not flip while the canonical pointer
+// stays stale. Mirrors contractEngine (src/engines/contractEngine.js:85).
+test('acceptTransferOffer throws when person.career is missing on the person record', () => {
+  const state = makeState();
+  delete state.peopleById['person-player'].career;
+  const snapshot = structuredClone(state);
+
+  assert.throws(
+    () => acceptTransferOffer(state, 'negotiation-t1'),
+    /Unknown person or career: person-player/,
+  );
+  assert.deepEqual(state, snapshot, 'state must remain byte-identical on rejection');
+});
+
+test('acceptTransferOffer throws when person.career is null', () => {
+  const state = makeState();
+  state.peopleById['person-player'].career = null;
+  const snapshot = structuredClone(state);
+
+  assert.throws(
+    () => acceptTransferOffer(state, 'negotiation-t1'),
+    /Unknown person or career: person-player/,
+  );
+  assert.deepEqual(state, snapshot, 'state must remain byte-identical on rejection');
+});
+
+test('acceptTransferOffer throws when person.career is a non-object (array)', () => {
+  const state = makeState();
+  state.peopleById['person-player'].career = [];
+  const snapshot = structuredClone(state);
+
+  assert.throws(
+    () => acceptTransferOffer(state, 'negotiation-t1'),
+    /Unknown person or career: person-player/,
+  );
+  assert.deepEqual(state, snapshot, 'state must remain byte-identical on rejection');
+});
