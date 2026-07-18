@@ -3,13 +3,14 @@
 
 function assertContainers(state) {
   // Schema invariants raised by Claude review on 2026-07-17:
-  // idCounters and clock must be validated here so a malformed/legacy
-  // state fails atomically with a clean Error rather than throwing a
-  // raw TypeError from inside allocateId or the expiry comparison.
-  // Mirrors assertContractState in src/engines/contractEngine.js:10-20.
+  // idCounters, clock, and peopleById must be validated here so a
+  // malformed/legacy state fails atomically with a clean Error rather
+  // than throwing a raw TypeError from inside allocateId, the expiry
+  // comparison, or the person-pointer dereference. Mirrors
+  // assertContractState in src/engines/contractEngine.js:10-20.
   for (const field of [
     'contractsById', 'registrationsById', 'negotiationsById',
-    'clubsById', 'idCounters', 'clock',
+    'clubsById', 'idCounters', 'clock', 'peopleById',
   ]) {
     if (!state[field] || typeof state[field] !== 'object' || Array.isArray(state[field])) {
       throw new Error(`${field} must be an object.`);

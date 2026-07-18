@@ -254,6 +254,22 @@ test('acceptTransferOffer throws a clean error when state.clock is missing', () 
   );
 });
 
+// Same schema-invariant pattern as idCounters/clock: peopleById must be
+// validated in assertContainers so a malformed/legacy state fails
+// atomically. Without this, the career-pointer dereference at
+// transferEngine.js:154 would crash with a raw TypeError on missing
+// peopleById — exactly the failure mode Blocker 1 was meant to close
+// off for the other containers. Raised by Claude Code review on
+// 2026-07-17 as a follow-up to the original assertContainers fix.
+test('acceptTransferOffer throws a clean error when state.peopleById is missing', () => {
+  const state = makeState();
+  delete state.peopleById;
+  assert.throws(
+    () => acceptTransferOffer(state, 'negotiation-t1'),
+    /peopleById must be an object\./,
+  );
+});
+
 // Atomic-failure regression raised by Claude review on 2026-07-17: a
 // missing/non-object person.career must NOT silently skip the career
 // pointer synchronization — the engine must reject atomically so contract
